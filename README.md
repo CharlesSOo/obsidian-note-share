@@ -1,6 +1,6 @@
-# Obsidian Note Share - Worker
+# Obsidian Note Share
 
-Cloudflare Worker backend for the Obsidian Note Share plugin. Stores and serves your shared notes.
+Share Obsidian notes via permanent links hosted on your own Cloudflare Worker.
 
 ## Quick Setup
 
@@ -17,68 +17,71 @@ Click the button below to deploy this worker to your Cloudflare account:
 This will:
 1. Fork this repository to your GitHub
 2. Deploy the worker to your Cloudflare account
+3. Create the R2 storage bucket automatically
 
-### Step 2: Create R2 Storage Bucket
+### Step 2: Set Your API Key
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. Navigate to **R2 Object Storage** in the sidebar
-3. Click **Create bucket**
-4. Name it exactly: `obsidian-shared-notes`
-5. Click **Create bucket**
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages**
+2. Click on your **obsidian-note-share** worker
+3. Go to **Settings** → **Variables and Secrets**
+4. Click **+ Add**
+5. Set:
+   - **Type**: Secret
+   - **Variable name**: `API_KEY`
+   - **Value**: A secure secret (generate one at [randomkeygen.com](https://randomkeygen.com/))
+6. Click **Add variable**, then **Deploy**
 
-### Step 3: Set Your API Key
+### Step 3: Get Your Worker URL
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. Navigate to **Workers & Pages**
-3. Click on your **obsidian-note-share** worker
-4. Go to **Settings** > **Variables**
-5. Under **Environment Variables**, click **Add variable**
-6. Set:
-   - Variable name: `API_KEY`
-   - Value: Choose a secure secret (e.g., generate one at [randomkeygen.com](https://randomkeygen.com/))
-7. Click **Encrypt** to make it a secret
-8. Click **Save and deploy**
+In your worker's overview page, find the URL:
+```
+https://obsidian-note-share.YOUR-SUBDOMAIN.workers.dev
+```
 
-### Step 4: Get Your Worker URL
+### Step 4: Configure Obsidian Plugin
 
-1. In your worker's overview page, find the URL
-2. It looks like: `https://obsidian-note-share.YOUR-SUBDOMAIN.workers.dev`
+1. Install the **Note Share** plugin in Obsidian
+2. Open **Settings** → **Note Share**
+3. Enter your **Server URL** (include `https://`)
+4. Enter your **API Key** (same value from Step 2)
+5. Click **Test Connection** to verify
 
-### Step 5: Configure Obsidian Plugin
+## Usage
 
-1. Open Obsidian Settings > Note Share
-2. Enter your **Worker URL**
-3. Enter your **API Key** (same value from Step 3)
-4. Click **Test Connection** to verify
+- **Right-click** a note → **Share Note** → Link copied to clipboard
+- **Sidebar** → View/manage all shared notes, sync theme
 
 ## Troubleshooting
 
-### "R2 bucket not configured"
-Make sure you created the bucket with the exact name `obsidian-shared-notes` in Step 2.
+### "Server not reachable"
+- Make sure the URL includes `https://`
+- Check that your worker is deployed
 
 ### "Invalid API key"
-Make sure the API key in Obsidian matches exactly what you set in Cloudflare (Step 3).
+- Make sure the API key in Obsidian matches exactly what you set in Cloudflare
+- Verify the variable name is exactly `API_KEY`
 
-### "Server not reachable"
-Check that your Worker URL is correct and the worker is deployed.
+### "R2 bucket not configured"
+The deploy button should create this automatically. If not:
+1. Go to Cloudflare Dashboard → **R2 Object Storage**
+2. Create a bucket named exactly: `obsidian-shared-notes`
 
 ## Custom Domain (Optional)
 
-To use a custom domain like `notes.yourdomain.com`:
+To use a custom domain like `share.yourdomain.com`:
 
-1. Go to your worker in Cloudflare Dashboard
-2. Click **Settings** > **Triggers**
-3. Add a **Custom Domain**
-4. Enter your domain and follow the DNS setup
+1. Go to your worker → **Settings** → **Domains & Routes**
+2. Add your custom domain
+3. DNS will be configured automatically if your domain is on Cloudflare
 
-## Architecture
+## How It Works
 
 ```
 Obsidian Plugin → Cloudflare Worker → R2 Storage
                          ↓
-                  Rendered HTML (public)
+                  Rendered HTML (public URLs)
 ```
 
-- Notes are stored in R2 as JSON
-- Public URLs render notes as styled HTML
-- Theme syncs from your Obsidian vault
+- Notes stored privately in your R2 bucket
+- Shared via URLs like: `https://your-worker.dev/g/vault/note-title/hash`
+- Your Obsidian theme colors sync automatically
