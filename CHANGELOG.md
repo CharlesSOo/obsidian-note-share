@@ -10,7 +10,8 @@
 ### Changed
 - Streamlined settings UI (2 sections instead of 5)
 - Improved README with BRAT installation instructions
-- Consistent `[NoteShare]` logging prefix for debugging
+- Context menu now shows single option when "Include linked notes" is enabled
+- Reduced console log noise (only logs for shared files)
 
 ### Fixed
 - Image filename encoding issues
