@@ -86,7 +86,7 @@ export class NoteShareAPI {
   }
 
   buildNoteUrl(vault: string, titleSlug: string, hash: string): string {
-    return `${this.settings.serverUrl}/g/${vault}/${titleSlug}/${hash}`;
+    return `${this.settings.serverUrl}/g/${titleSlug}/${hash}`;
   }
 
   async checkStatus(): Promise<ConnectionTestResult> {

@@ -111,7 +111,7 @@ app.post('/api/share', async (c) => {
         };
 
         await c.env.NOTES.put(
-          `${body.vault}/notes/${linkedTitleSlug}-${linkedHash}.json`,
+          `notes/${linkedTitleSlug}-${linkedHash}.json`,
           JSON.stringify(linkedNote)
         );
 
@@ -138,9 +138,10 @@ app.post('/api/share', async (c) => {
       linkedNotes,
     };
 
-    await c.env.NOTES.put(`${body.vault}/notes/${titleSlug}-${hash}.json`, JSON.stringify(note));
+    // Store note globally (vault info is inside the JSON)
+    await c.env.NOTES.put(`notes/${titleSlug}-${hash}.json`, JSON.stringify(note));
 
-    // Update index
+    // Update vault-specific index for listing
     await addToIndex(c.env.NOTES, body.vault, {
       titleSlug,
       hash,
@@ -152,7 +153,7 @@ app.post('/api/share', async (c) => {
     const baseUrl = `${url.protocol}//${url.host}`;
 
     return c.json({
-      url: `${baseUrl}/g/${body.vault}/${titleSlug}/${hash}`,
+      url: `${baseUrl}/g/${titleSlug}/${hash}`,
       titleSlug,
       hash,
     });
@@ -190,8 +191,8 @@ app.delete('/api/notes/:vault/:titleSlug/:hash', async (c) => {
     const titleSlug = c.req.param('titleSlug');
     const hash = c.req.param('hash');
 
-    // Delete the note
-    await c.env.NOTES.delete(`${vault}/notes/${titleSlug}-${hash}.json`);
+    // Delete the note (stored globally)
+    await c.env.NOTES.delete(`notes/${titleSlug}-${hash}.json`);
 
     // Update index
     await removeFromIndex(c.env.NOTES, vault, titleSlug, hash);
@@ -204,28 +205,27 @@ app.delete('/api/notes/:vault/:titleSlug/:hash', async (c) => {
 });
 
 // View a note (public - no auth required)
-app.get('/g/:vault/:titleSlug/:hash', async (c) => {
+app.get('/g/:titleSlug/:hash', async (c) => {
   try {
-    const vault = c.req.param('vault');
     const titleSlug = c.req.param('titleSlug');
     const hash = c.req.param('hash');
 
-    const noteObj = await c.env.NOTES.get(`${vault}/notes/${titleSlug}-${hash}.json`);
+    const noteObj = await c.env.NOTES.get(`notes/${titleSlug}-${hash}.json`);
     if (!noteObj) {
       return c.html(render404(), 404);
     }
 
     const note: StoredNote = await noteObj.json();
 
-    // Get theme
+    // Get theme from the note's vault
     let theme: ThemeSettings | null = null;
-    const themeObj = await c.env.NOTES.get(`${vault}/theme.json`);
+    const themeObj = await c.env.NOTES.get(`${note.vault}/theme.json`);
     if (themeObj) {
       theme = await themeObj.json();
     }
 
     const url = new URL(c.req.url);
-    const baseUrl = `${url.protocol}//${url.host}/g/${vault}`;
+    const baseUrl = `${url.protocol}//${url.host}/g`;
 
     return c.html(renderNote(note, theme, baseUrl));
   } catch (e) {
