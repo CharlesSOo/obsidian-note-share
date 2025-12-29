@@ -108,11 +108,18 @@ export default class NoteSharePlugin extends Plugin {
   }
 
   handleFileModify(file: TFile) {
-    if (!this.settings.autoSync) return;
+    if (!this.settings.autoSync) {
+      console.log('[NoteShare] Auto-sync disabled');
+      return;
+    }
 
     const entry = this.settings.sharedNotes?.[file.path];
-    if (!entry) return; // Not a shared note
+    if (!entry) {
+      console.log(`[NoteShare] File not shared, skipping: ${file.path}`);
+      return;
+    }
 
+    console.log(`[NoteShare] File modified, scheduling sync: ${file.path}`);
     const delay = (this.settings.autoSyncDelay || 1) * 60 * 1000;
 
     // Start interval if not already running (syncs every 2 min)
@@ -143,6 +150,7 @@ export default class NoteSharePlugin extends Plugin {
   }
 
   async autoSyncNote(file: TFile) {
+    console.log(`[NoteShare] Auto-syncing: ${file.path}`);
     try {
       const content = await this.app.vault.read(file);
       const vault = this.getEffectiveVaultSlug();
@@ -276,6 +284,7 @@ export default class NoteSharePlugin extends Plugin {
         lastSynced: new Date().toISOString(),
       };
       await this.saveSettings();
+      console.log(`[NoteShare] Registered for auto-sync: ${file.path}`);
 
       // Copy to clipboard
       await navigator.clipboard.writeText(response.url);
@@ -330,12 +339,14 @@ export default class NoteSharePlugin extends Plugin {
       // Check if it's an image file
       if (resolvedFile instanceof TFile && imageExtensions.includes(resolvedFile.extension.toLowerCase())) {
         try {
+          console.log(`[NoteShare] Uploading image: ${resolvedFile.path}`);
           const imageData = await this.app.vault.readBinary(resolvedFile);
           const ext = resolvedFile.extension.toLowerCase();
           const contentType = this.getContentType(ext);
           const filename = encodeURIComponent(resolvedFile.name);
 
           const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
+          console.log(`[NoteShare] Image uploaded: ${result.url}`);
 
           // Replace all occurrences of this embed with markdown image
           processedContent = processedContent.split(match[0]).join(`![${resolvedFile.basename}](${result.url})`);
