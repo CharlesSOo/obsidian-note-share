@@ -12,6 +12,7 @@ export interface NoteShareSettings {
   includeLinkedNotes: boolean;
   autoSync: boolean;
   autoSyncDelay: number; // minutes
+  autoDeleteDays: number; // 0 = never, else days until auto-delete
   sharedNotes: Record<string, SharedNoteEntry>; // keyed by filePath
 }
 
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: NoteShareSettings = {
   includeLinkedNotes: false,
   autoSync: true,
   autoSyncDelay: 1,
+  autoDeleteDays: 0,
   sharedNotes: {},
 };
 
@@ -41,6 +43,7 @@ export interface ShareRequest {
   title: string;
   content: string;
   linkedNotes?: { title: string; content: string }[];
+  retentionDays?: number;
 }
 
 export interface ShareResponse {

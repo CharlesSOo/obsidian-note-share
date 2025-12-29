@@ -10,6 +10,10 @@ binding = "NOTES"
 bucket_name = "obsidian-shared-notes"
 # preview_bucket_name = "obsidian-shared-notes-preview"  # Optional: for local dev
 
+# Cron trigger for auto-delete cleanup (runs daily at midnight UTC)
+[triggers]
+crons = ["0 0 * * *"]
+
 # Uncomment and configure for custom domain:
 # [routes]
 # pattern = "notes.yourdomain.com/*"

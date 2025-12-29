@@ -20,6 +20,7 @@ export interface ShareRequest {
   title: string;
   content: string;
   linkedNotes?: LinkedNote[];
+  retentionDays?: number;
 }
 
 export interface LinkedNote {
@@ -36,6 +37,7 @@ export interface StoredNote {
   createdAt: string;
   updatedAt: string;
   linkedNotes: { titleSlug: string; hash: string }[];
+  retentionDays?: number;
 }
 
 export interface NoteIndex {

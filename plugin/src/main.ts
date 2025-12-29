@@ -264,6 +264,7 @@ export default class NoteSharePlugin extends Plugin {
         vault,
         title,
         content: processedContent,
+        retentionDays: this.settings.autoDeleteDays || 0,
       };
 
       // Handle linked notes

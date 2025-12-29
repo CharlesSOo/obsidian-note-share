@@ -112,6 +112,19 @@ export class NoteShareSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName('Auto-delete after (days)')
+      .setDesc('Automatically delete shared notes after this many days (0 = never)')
+      .addText((text) =>
+        text
+          .setPlaceholder('0')
+          .setValue(String(this.plugin.settings.autoDeleteDays || 0))
+          .onChange(async (value) => {
+            this.plugin.settings.autoDeleteDays = Math.max(0, parseInt(value) || 0);
+            await this.plugin.saveSettings();
+          })
+      );
+
     // Auto-sync Settings
     containerEl.createEl('h3', { text: 'Auto-sync' });
 

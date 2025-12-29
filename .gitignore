@@ -6,8 +6,10 @@ plugin/main.js
 plugin/main.js.map
 
 # Cloudflare
+.wrangler/
 worker/.wrangler/
 worker/.dev.vars
+.dev.vars
 
 # IDE
 .idea/

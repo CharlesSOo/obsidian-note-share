@@ -155,6 +155,7 @@ app.post('/api/share', async (c) => {
       createdAt,
       updatedAt: new Date().toISOString(),
       linkedNotes,
+      retentionDays: body.retentionDays || 0,
     };
 
     // Store note globally (vault info is inside the JSON)
@@ -392,4 +393,58 @@ function render404(): string {
 </html>`;
 }
 
-export default app;
+// Scheduled cleanup handler for auto-delete
+async function cleanupExpiredNotes(env: Env): Promise<number> {
+  const now = new Date();
+  let cursor: string | undefined;
+  let deleted = 0;
+
+  do {
+    const notesList = await env.NOTES.list({ prefix: 'notes/', cursor });
+
+    for (const object of notesList.objects) {
+      const noteObj = await env.NOTES.get(object.key);
+      if (!noteObj) continue;
+
+      const note: StoredNote = await noteObj.json();
+
+      // Skip if no retention set (0 = never delete)
+      if (!note.retentionDays || note.retentionDays <= 0) continue;
+
+      const noteDate = new Date(note.updatedAt || note.createdAt);
+      const expiryDate = new Date(noteDate);
+      expiryDate.setDate(expiryDate.getDate() + note.retentionDays);
+
+      if (now > expiryDate) {
+        // Delete note
+        await env.NOTES.delete(object.key);
+
+        // Delete associated images
+        const imagesList = await env.NOTES.list({ prefix: `images/${note.hash}/` });
+        for (const img of imagesList.objects) {
+          await env.NOTES.delete(img.key);
+        }
+
+        // Remove from vault index
+        await removeFromIndex(env.NOTES, note.vault, note.titleSlug, note.hash);
+
+        console.log(`Deleted expired note: ${note.title} (${note.hash})`);
+        deleted++;
+      }
+    }
+
+    cursor = notesList.truncated ? notesList.cursor : undefined;
+  } while (cursor);
+
+  return deleted;
+}
+
+export default {
+  fetch: app.fetch,
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    console.log('Running auto-delete cleanup...');
+    const deleted = await cleanupExpiredNotes(env);
+    console.log(`Cleanup complete. Deleted ${deleted} notes.`);
+  },
+};
