@@ -112,6 +112,35 @@ export class NoteShareSettingTab extends PluginSettingTab {
           })
       );
 
+    // Auto-sync Settings
+    containerEl.createEl('h3', { text: 'Auto-sync' });
+
+    new Setting(containerEl)
+      .setName('Auto-sync shared notes')
+      .setDesc('Automatically re-upload shared notes when edited')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoSync ?? true)
+          .onChange(async (value) => {
+            this.plugin.settings.autoSync = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Sync delay (minutes)')
+      .setDesc('How often to sync while editing, and how long to wait after editing stops')
+      .addText((text) =>
+        text
+          .setPlaceholder('2')
+          .setValue(String(this.plugin.settings.autoSyncDelay || 2))
+          .onChange(async (value) => {
+            const num = parseInt(value) || 2;
+            this.plugin.settings.autoSyncDelay = Math.max(1, Math.min(30, num));
+            await this.plugin.saveSettings();
+          })
+      );
+
     // Theme Info
     containerEl.createEl('h3', { text: 'Theme' });
 

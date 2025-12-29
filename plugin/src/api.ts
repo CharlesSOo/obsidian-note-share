@@ -1,4 +1,4 @@
-import { NoteShareSettings, ShareRequest, ShareResponse, SharedNote, ThemeSettings, ThemeSyncRequest } from './types';
+import { NoteShareSettings, ShareRequest, ShareResponse, SharedNote, ThemeSettings, ThemeSyncRequest, ImageUploadResponse } from './types';
 
 export interface StatusResponse {
   status: 'ok' | 'error';
@@ -86,7 +86,25 @@ export class NoteShareAPI {
   }
 
   buildNoteUrl(vault: string, titleSlug: string, hash: string): string {
-    return `${this.settings.serverUrl}/g/${titleSlug}/${hash}`;
+    return `${this.settings.serverUrl}/g/${titleSlug}-${hash}`;
+  }
+
+  async uploadImage(noteHash: string, filename: string, data: ArrayBuffer, contentType: string): Promise<ImageUploadResponse> {
+    const response = await fetch(`${this.settings.serverUrl}/api/images/${noteHash}`, {
+      method: 'POST',
+      headers: {
+        'X-API-Key': this.settings.apiKey,
+        'Content-Type': contentType,
+        'X-Filename': filename,
+      },
+      body: data,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to upload image');
+    }
+
+    return response.json();
   }
 
   async checkStatus(): Promise<ConnectionTestResult> {

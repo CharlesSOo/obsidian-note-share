@@ -172,7 +172,7 @@ app.post('/api/share', async (c) => {
     const baseUrl = `${url.protocol}//${url.host}`;
 
     return c.json({
-      url: `${baseUrl}/g/${titleSlug}/${hash}`,
+      url: `${baseUrl}/g/${titleSlug}-${hash}`,
       titleSlug,
       hash,
     });
@@ -223,11 +223,67 @@ app.delete('/api/notes/:vault/:titleSlug/:hash', async (c) => {
   }
 });
 
-// View a note (public - no auth required)
-app.get('/g/:titleSlug/:hash', async (c) => {
+// Upload an image for a note
+app.post('/api/images/:noteHash', async (c) => {
   try {
-    const titleSlug = c.req.param('titleSlug');
-    const hash = c.req.param('hash');
+    const noteHash = c.req.param('noteHash');
+    const contentType = c.req.header('Content-Type') || 'application/octet-stream';
+    const filename = c.req.header('X-Filename') || 'image';
+
+    const body = await c.req.arrayBuffer();
+
+    // Store image with note hash prefix for organization
+    const key = `images/${noteHash}/${filename}`;
+    await c.env.NOTES.put(key, body, {
+      httpMetadata: { contentType },
+    });
+
+    const url = new URL(c.req.url);
+    const imageUrl = `${url.protocol}//${url.host}/i/${noteHash}/${filename}`;
+
+    return c.json({ url: imageUrl, key });
+  } catch (e) {
+    console.error('Image upload error:', e);
+    return c.json({ error: 'Failed to upload image' }, 500);
+  }
+});
+
+// Serve an image (public - no auth required)
+app.get('/i/:noteHash/:filename', async (c) => {
+  try {
+    const noteHash = c.req.param('noteHash');
+    const filename = c.req.param('filename');
+
+    const obj = await c.env.NOTES.get(`images/${noteHash}/${filename}`);
+    if (!obj) {
+      return c.text('Not found', 404);
+    }
+
+    const headers = new Headers();
+    headers.set('Content-Type', obj.httpMetadata?.contentType || 'application/octet-stream');
+    headers.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+
+    return new Response(obj.body, { headers });
+  } catch (e) {
+    console.error('Image serve error:', e);
+    return c.text('Error', 500);
+  }
+});
+
+// View a note (public - no auth required)
+// URL format: /g/{titleSlug}-{hash} where hash is 8 hex chars
+app.get('/g/:slug', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+
+    // Hash is last 8 characters after final dash
+    const lastDash = slug.lastIndexOf('-');
+    if (lastDash === -1 || slug.length - lastDash !== 9) {
+      return c.html(render404(), 404);
+    }
+
+    const titleSlug = slug.substring(0, lastDash);
+    const hash = slug.substring(lastDash + 1);
 
     const noteObj = await c.env.NOTES.get(`notes/${titleSlug}-${hash}.json`);
     if (!noteObj) {
