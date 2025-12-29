@@ -25,7 +25,7 @@ export class NoteShareSettingTab extends PluginSettingTab {
         button
           .setButtonText('Open Setup Guide')
           .onClick(() => {
-            window.open('https://github.com/CharlesSOo/Obsidian-share/tree/main/worker#readme');
+            window.open('https://github.com/CharlesSOo/Obsidian-share/blob/main/worker/README.md');
           })
       );
 

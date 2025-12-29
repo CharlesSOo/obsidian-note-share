@@ -12,7 +12,7 @@ Cloudflare Worker backend for the Obsidian Note Share plugin. Stores and serves 
 
 Click the button below to deploy this worker to your Cloudflare account:
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/CharlesSOo/Obsidian-share)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/CharlesSOo/Obsidian-share/tree/main/worker)
 
 This will:
 1. Fork this repository to your GitHub
