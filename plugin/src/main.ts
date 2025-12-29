@@ -244,13 +244,20 @@ export default class NoteSharePlugin extends Plugin {
     }
 
     try {
-      new Notice('Sharing note...');
-
-      const content = await this.app.vault.read(file);
       const title = file.basename;
       const vault = this.getEffectiveVaultSlug();
+      const titleSlug = this.slugify(title);
 
-      // Process images and get rewritten content
+      // Compute deterministic hash and URL immediately
+      const hash = await this.computeNoteHash(vault, title);
+      const url = `${this.settings.serverUrl}/g/${vault}/${titleSlug}/${hash}`;
+
+      // Copy to clipboard FIRST - instant feedback
+      await navigator.clipboard.writeText(url);
+      new Notice(`Link copied! Uploading...`);
+
+      // Now do the slow work: read content, process images, upload
+      const content = await this.app.vault.read(file);
       const processedContent = await this.processImages(file, content);
 
       const request: ShareRequest = {
@@ -267,11 +274,10 @@ export default class NoteSharePlugin extends Plugin {
         }
       }
 
-      // Also sync theme when sharing
+      // Sync theme and upload note
       const theme = this.getThemeFromObsidian();
       await this.api.syncTheme({ vault, theme });
-
-      const response = await this.api.shareNote(request);
+      await this.api.shareNote(request);
 
       // Register as shared note for auto-sync
       if (!this.settings.sharedNotes) {
@@ -279,16 +285,14 @@ export default class NoteSharePlugin extends Plugin {
       }
       this.settings.sharedNotes[file.path] = {
         filePath: file.path,
-        titleSlug: response.titleSlug,
-        hash: response.hash,
+        titleSlug,
+        hash,
         lastSynced: new Date().toISOString(),
       };
       await this.saveSettings();
       console.log(`[NoteShare] Registered for auto-sync: ${file.path}`);
 
-      // Copy to clipboard
-      await navigator.clipboard.writeText(response.url);
-      new Notice(`Link copied: ${response.url}`);
+      new Notice(`Uploaded: ${url}`);
 
       // Refresh sidebar if open
       const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_SHARED_NOTES);
@@ -309,20 +313,24 @@ export default class NoteSharePlugin extends Plugin {
       .replace(/^-|-$/g, '');
   }
 
-  async processImages(file: TFile, content: string): Promise<string> {
-    // Generate hash for this note (same logic as server)
-    const vault = this.getEffectiveVaultSlug();
-    const title = file.basename;
+  async computeNoteHash(vault: string, title: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(`${vault}:${title}`);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const noteHash = hashArray.slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async processImages(file: TFile, content: string): Promise<string> {
+    // Generate hash for this note (same logic as server)
+    const vault = this.getEffectiveVaultSlug();
+    const title = file.basename;
+    const noteHash = await this.computeNoteHash(vault, title);
 
     let processedContent = content;
 
-    // Match ALL Obsidian-style embeds: ![[anything]] - we'll check if it's an image after resolving
-    const obsidianEmbedRegex = /!\[\[([^\]]+)\]\]/gi;
+    // Match ALL Obsidian-style embeds: ![[path]] or ![[path|alias]]
+    const obsidianEmbedRegex = /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/gi;
     const obsidianMatches = [...content.matchAll(obsidianEmbedRegex)];
 
     // Match markdown-style images: ![alt](path.png)
@@ -333,26 +341,45 @@ export default class NoteSharePlugin extends Plugin {
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'];
 
     for (const match of obsidianMatches) {
-      const embedPath = match[1];
+      const embedPath = match[1];  // Just the path, alias is parsed out
+      const alias = match[2];      // Optional alias for alt text
+      console.log(`[NoteShare] Processing embed: ![[${embedPath}${alias ? '|' + alias : ''}]]`);
+
       const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(embedPath, file.path);
 
-      // Check if it's an image file
-      if (resolvedFile instanceof TFile && imageExtensions.includes(resolvedFile.extension.toLowerCase())) {
-        try {
-          console.log(`[NoteShare] Uploading image: ${resolvedFile.path}`);
-          const imageData = await this.app.vault.readBinary(resolvedFile);
-          const ext = resolvedFile.extension.toLowerCase();
-          const contentType = this.getContentType(ext);
-          const filename = encodeURIComponent(resolvedFile.name);
+      if (!resolvedFile) {
+        console.log(`[NoteShare] Could not resolve file: ${embedPath}`);
+        continue;
+      }
 
-          const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
-          console.log(`[NoteShare] Image uploaded: ${result.url}`);
+      if (!(resolvedFile instanceof TFile)) {
+        console.log(`[NoteShare] Resolved to non-file: ${embedPath}`);
+        continue;
+      }
 
-          // Replace all occurrences of this embed with markdown image
-          processedContent = processedContent.split(match[0]).join(`![${resolvedFile.basename}](${result.url})`);
-        } catch (e) {
-          console.error(`Failed to upload image ${embedPath}:`, e);
-        }
+      console.log(`[NoteShare] Resolved: ${resolvedFile.path} (ext: ${resolvedFile.extension})`);
+
+      if (!imageExtensions.includes(resolvedFile.extension.toLowerCase())) {
+        console.log(`[NoteShare] Not an image extension: ${resolvedFile.extension}`);
+        continue;
+      }
+
+      try {
+        console.log(`[NoteShare] Uploading image: ${resolvedFile.path}`);
+        const imageData = await this.app.vault.readBinary(resolvedFile);
+        const ext = resolvedFile.extension.toLowerCase();
+        const contentType = this.getContentType(ext);
+        const filename = resolvedFile.name; // Don't encode - server handles URL encoding
+
+        const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
+        console.log(`[NoteShare] Image uploaded: ${result.url}`);
+
+        // Replace all occurrences of this embed with markdown image
+        // Use alias if provided, otherwise use file basename
+        const altText = alias || resolvedFile.basename;
+        processedContent = processedContent.split(match[0]).join(`![${altText}](${result.url})`);
+      } catch (e) {
+        console.error(`[NoteShare] Failed to upload image ${embedPath}:`, e);
       }
     }
 
@@ -372,7 +399,7 @@ export default class NoteSharePlugin extends Plugin {
           const imageData = await this.app.vault.readBinary(imageFile);
           const ext = imageFile.extension.toLowerCase();
           const contentType = this.getContentType(ext);
-          const filename = encodeURIComponent(imageFile.name);
+          const filename = imageFile.name; // Don't encode - server handles URL encoding
 
           const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
 
@@ -383,6 +410,13 @@ export default class NoteSharePlugin extends Plugin {
         }
       }
     }
+
+    // Clean up any remaining image embeds that couldn't be processed
+    // This prevents them from breaking internal link processing on the server
+    processedContent = processedContent.replace(
+      /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/gi,
+      (match, path, alias) => `[Image: ${alias || path}]`
+    );
 
     return processedContent;
   }

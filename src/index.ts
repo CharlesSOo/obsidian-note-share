@@ -239,7 +239,7 @@ app.post('/api/images/:noteHash', async (c) => {
     });
 
     const url = new URL(c.req.url);
-    const imageUrl = `${url.protocol}//${url.host}/i/${noteHash}/${filename}`;
+    const imageUrl = `${url.protocol}//${url.host}/i/${noteHash}/${encodeURIComponent(filename)}`;
 
     return c.json({ url: imageUrl, key });
   } catch (e) {
