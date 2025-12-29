@@ -71,14 +71,22 @@ export default class NoteSharePlugin extends Plugin {
       this.app.workspace.on('file-menu', (menu, file) => {
         if (!(file instanceof TFile) || file.extension !== 'md') return;
 
-        menu.addItem((item) => {
-          item
-            .setTitle('Share Note')
-            .setIcon('share')
-            .onClick(() => this.shareNote(file));
-        });
-
         if (this.settings.includeLinkedNotes) {
+          // Setting enabled: just show one option (links already included)
+          menu.addItem((item) => {
+            item
+              .setTitle('Share Note + Links')
+              .setIcon('share-2')
+              .onClick(() => this.shareNote(file));
+          });
+        } else {
+          // Setting disabled: show both options
+          menu.addItem((item) => {
+            item
+              .setTitle('Share Note')
+              .setIcon('share')
+              .onClick(() => this.shareNote(file));
+          });
           menu.addItem((item) => {
             item
               .setTitle('Share Note + Links')
@@ -150,18 +158,12 @@ export default class NoteSharePlugin extends Plugin {
   }
 
   handleFileModify(file: TFile) {
-    if (!this.settings.autoSync) {
-      console.log('[NoteShare] Auto-sync disabled');
-      return;
-    }
+    if (!this.settings.autoSync) return;
 
     const entry = this.settings.sharedNotes?.[file.path];
-    if (!entry) {
-      console.log(`[NoteShare] File not shared, skipping: ${file.path}`);
-      return;
-    }
+    if (!entry) return;
 
-    console.log(`[NoteShare] File modified, scheduling sync: ${file.path}`);
+    console.log(`[NoteShare] Scheduling sync: ${file.path}`);
     const delay = (this.settings.autoSyncDelay || 1) * 60 * 1000;
 
     // Start interval if not already running (syncs every 2 min)
