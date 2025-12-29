@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, TAbstractFile } from 'obsidian';
+import { Notice, Plugin, TFile } from 'obsidian';
 import { NoteShareSettings, DEFAULT_SETTINGS, ShareRequest, ThemeSettings } from './types';
 import { NoteShareAPI } from './api';
 import { NoteShareSettingTab } from './settings';
@@ -334,8 +334,8 @@ export default class NoteSharePlugin extends Plugin {
 
           const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
 
-          // Replace embed with markdown image pointing to uploaded URL
-          processedContent = processedContent.replace(match[0], `![${imageFile.basename}](${result.url})`);
+          // Replace all occurrences of this embed with markdown image
+          processedContent = processedContent.split(match[0]).join(`![${imageFile.basename}](${result.url})`);
         } catch (e) {
           console.error(`Failed to upload image ${imagePath}:`, e);
         }
@@ -362,8 +362,8 @@ export default class NoteSharePlugin extends Plugin {
 
           const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
 
-          // Replace with uploaded URL
-          processedContent = processedContent.replace(fullMatch, `![${alt}](${result.url})`);
+          // Replace all occurrences with uploaded URL
+          processedContent = processedContent.split(fullMatch).join(`![${alt}](${result.url})`);
         } catch (e) {
           console.error(`Failed to upload image ${imagePath}:`, e);
         }
@@ -396,8 +396,10 @@ export default class NoteSharePlugin extends Plugin {
 
       if (linkedFile instanceof TFile && linkedFile.extension === 'md') {
         const content = await this.app.vault.read(linkedFile);
+        // Process images in linked notes too
+        const processedContent = await this.processImages(linkedFile, content);
         const title = linkedFile.basename;
-        linkedNotes.push({ title, content });
+        linkedNotes.push({ title, content: processedContent });
       }
     }
 

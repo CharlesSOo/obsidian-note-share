@@ -23,19 +23,11 @@ export class NoteShareAPI {
   }
 
   async shareNote(request: ShareRequest): Promise<ShareResponse> {
-    const url = `${this.settings.serverUrl}/api/share`;
-    const body = JSON.stringify(request);
-    console.log('API shareNote URL:', url);
-    console.log('API shareNote body:', body.substring(0, 500));
-    console.log('API shareNote headers:', this.headers);
-
-    const response = await fetch(url, {
+    const response = await fetch(`${this.settings.serverUrl}/api/share`, {
       method: 'POST',
       headers: this.headers,
-      body,
+      body: JSON.stringify(request),
     });
-
-    console.log('API shareNote response status:', response.status);
 
     if (!response.ok) {
       const error = await response.text();
@@ -86,7 +78,7 @@ export class NoteShareAPI {
   }
 
   buildNoteUrl(vault: string, titleSlug: string, hash: string): string {
-    return `${this.settings.serverUrl}/g/${titleSlug}-${hash}`;
+    return `${this.settings.serverUrl}/g/${vault}/${titleSlug}/${hash}`;
   }
 
   async uploadImage(noteHash: string, filename: string, data: ArrayBuffer, contentType: string): Promise<ImageUploadResponse> {

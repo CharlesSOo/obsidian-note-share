@@ -172,7 +172,7 @@ app.post('/api/share', async (c) => {
     const baseUrl = `${url.protocol}//${url.host}`;
 
     return c.json({
-      url: `${baseUrl}/g/${titleSlug}-${hash}`,
+      url: `${baseUrl}/g/${body.vault}/${titleSlug}/${hash}`,
       titleSlug,
       hash,
     });
@@ -271,19 +271,12 @@ app.get('/i/:noteHash/:filename', async (c) => {
 });
 
 // View a note (public - no auth required)
-// URL format: /g/{titleSlug}-{hash} where hash is 8 hex chars
-app.get('/g/:slug', async (c) => {
+// URL format: /g/{vault}/{titleSlug}/{hash}
+app.get('/g/:vault/:titleSlug/:hash', async (c) => {
   try {
-    const slug = c.req.param('slug');
-
-    // Hash is last 8 characters after final dash
-    const lastDash = slug.lastIndexOf('-');
-    if (lastDash === -1 || slug.length - lastDash !== 9) {
-      return c.html(render404(), 404);
-    }
-
-    const titleSlug = slug.substring(0, lastDash);
-    const hash = slug.substring(lastDash + 1);
+    const vault = c.req.param('vault');
+    const titleSlug = c.req.param('titleSlug');
+    const hash = c.req.param('hash');
 
     const noteObj = await c.env.NOTES.get(`notes/${titleSlug}-${hash}.json`);
     if (!noteObj) {
@@ -292,15 +285,20 @@ app.get('/g/:slug', async (c) => {
 
     const note: StoredNote = await noteObj.json();
 
+    // Verify vault matches (security check)
+    if (note.vault !== vault) {
+      return c.html(render404(), 404);
+    }
+
     // Get theme from the note's vault
     let theme: ThemeSettings | null = null;
-    const themeObj = await c.env.NOTES.get(`${note.vault}/theme.json`);
+    const themeObj = await c.env.NOTES.get(`${vault}/theme.json`);
     if (themeObj) {
       theme = await themeObj.json();
     }
 
     const url = new URL(c.req.url);
-    const baseUrl = `${url.protocol}//${url.host}/g`;
+    const baseUrl = `${url.protocol}//${url.host}/g/${vault}`;
 
     return c.html(renderNote(note, theme, baseUrl));
   } catch (e) {

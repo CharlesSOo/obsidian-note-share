@@ -27,7 +27,7 @@ export function renderNote(note: StoredNote, theme: ThemeSettings | null, baseUr
   content = processHighlights(content);
   content = processTags(content);
   content = processCheckboxes(content);
-  content = processInternalLinks(content, baseUrl);
+  content = processInternalLinks(content, baseUrl, note.linkedNotes);
 
   const html = marked.parse(content) as string;
   const styles = generateStyles(t);
@@ -105,13 +105,23 @@ function processCheckboxes(content: string): string {
   return content;
 }
 
-function processInternalLinks(content: string, baseUrl: string): string {
+function processInternalLinks(
+  content: string,
+  baseUrl: string,
+  linkedNotes: { titleSlug: string; hash: string }[]
+): string {
   return content.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, link, display) => {
     const slug = link.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const text = display || link;
-    // Note: linked notes have their own hash, but we don't know it here
-    // The link will go to the slug, which may or may not exist
-    return `<a href="${baseUrl}/${slug}" class="internal-link">${escapeHtml(text)}</a>`;
+
+    // Find the linked note's hash
+    const linkedNote = linkedNotes.find(n => n.titleSlug === slug);
+    if (linkedNote) {
+      // baseUrl already includes vault: /g/{vault}
+      return `<a href="${baseUrl}/${slug}/${linkedNote.hash}" class="internal-link">${escapeHtml(text)}</a>`;
+    }
+    // If not found in linkedNotes, show as unresolved
+    return `<span class="internal-link unresolved">${escapeHtml(text)}</span>`;
   });
 }
 
