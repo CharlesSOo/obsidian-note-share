@@ -10,6 +10,9 @@ const OBSIDIAN_EMBED_REGEX = /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/gi;
 // Hash bytes to use for URL (4 bytes = 8 hex chars)
 const HASH_BYTES = 4;
 
+// WebP compression quality (0-1)
+const WEBP_QUALITY = 0.85;
+
 export default class NoteSharePlugin extends Plugin {
   settings: NoteShareSettings;
   api: NoteShareAPI;
@@ -423,16 +426,68 @@ export default class NoteSharePlugin extends Plugin {
       console.log(`[NoteShare] Uploading image: ${imageFile.path}`);
       const imageData = await this.app.vault.readBinary(imageFile);
       const ext = imageFile.extension.toLowerCase();
-      const contentType = this.getContentType(ext);
-      const filename = imageFile.name;
 
-      const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
-      console.log(`[NoteShare] Image uploaded: ${result.url}`);
+      // Skip WebP conversion for SVGs (already optimized vectors)
+      if (ext === 'svg') {
+        const result = await this.api.uploadImage(noteHash, imageFile.name, imageData, 'image/svg+xml');
+        console.log(`[NoteShare] SVG uploaded: ${result.url}`);
+        return result.url;
+      }
+
+      // Convert to WebP for all other image formats
+      const webpData = await this.convertToWebP(imageData);
+      const webpFilename = imageFile.basename + '.webp';
+
+      const result = await this.api.uploadImage(noteHash, webpFilename, webpData, 'image/webp');
+      console.log(`[NoteShare] Image converted to WebP and uploaded: ${result.url}`);
       return result.url;
     } catch (e) {
       console.error(`[NoteShare] Failed to upload image ${imageFile.path}:`, e);
       return undefined;
     }
+  }
+
+  private async convertToWebP(imageData: ArrayBuffer): Promise<ArrayBuffer> {
+    return new Promise((resolve, reject) => {
+      const blob = new Blob([imageData]);
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+
+        canvas.toBlob(
+          (webpBlob) => {
+            if (!webpBlob) {
+              reject(new Error('Failed to convert to WebP'));
+              return;
+            }
+            webpBlob.arrayBuffer().then(resolve).catch(reject);
+          },
+          'image/webp',
+          WEBP_QUALITY
+        );
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image'));
+      };
+
+      img.src = url;
+    });
   }
 
   async getLinkedNotes(file: TFile): Promise<{ title: string; content: string }[]> {
