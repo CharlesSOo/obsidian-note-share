@@ -35,7 +35,7 @@ export default class NoteSharePlugin extends Plugin {
           // Setting enabled: just show one option (links already included)
           menu.addItem((item) => {
             item
-              .setTitle('Share Note + Links')
+              .setTitle('Share Note + Linked Notes')
               .setIcon('share-2')
               .onClick(() => this.shareNote(file));
           });
@@ -49,7 +49,7 @@ export default class NoteSharePlugin extends Plugin {
           });
           menu.addItem((item) => {
             item
-              .setTitle('Share Note + Links')
+              .setTitle('Share Note + Linked Notes')
               .setIcon('share-2')
               .onClick(() => this.shareNote(file, true));
           });
