@@ -1,67 +1,84 @@
-# Obsidian Note Share
+# Obsidian Note Share - Worker
 
-Share Obsidian notes via permanent links hosted on Cloudflare.
+Cloudflare Worker backend for the Obsidian Note Share plugin. Stores and serves your shared notes.
 
-## Structure
+## Quick Setup
+
+### Prerequisites
+- GitHub account
+- Cloudflare account (free tier works)
+
+### Step 1: Deploy the Worker
+
+Click the button below to deploy this worker to your Cloudflare account:
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/CharlesSOo/Obsidian-share)
+
+This will:
+1. Fork this repository to your GitHub
+2. Deploy the worker to your Cloudflare account
+
+### Step 2: Create R2 Storage Bucket
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Navigate to **R2 Object Storage** in the sidebar
+3. Click **Create bucket**
+4. Name it exactly: `obsidian-shared-notes`
+5. Click **Create bucket**
+
+### Step 3: Set Your API Key
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Navigate to **Workers & Pages**
+3. Click on your **obsidian-note-share** worker
+4. Go to **Settings** > **Variables**
+5. Under **Environment Variables**, click **Add variable**
+6. Set:
+   - Variable name: `API_KEY`
+   - Value: Choose a secure secret (e.g., generate one at [randomkeygen.com](https://randomkeygen.com/))
+7. Click **Encrypt** to make it a secret
+8. Click **Save and deploy**
+
+### Step 4: Get Your Worker URL
+
+1. In your worker's overview page, find the URL
+2. It looks like: `https://obsidian-note-share.YOUR-SUBDOMAIN.workers.dev`
+
+### Step 5: Configure Obsidian Plugin
+
+1. Open Obsidian Settings > Note Share
+2. Enter your **Worker URL**
+3. Enter your **API Key** (same value from Step 3)
+4. Click **Test Connection** to verify
+
+## Troubleshooting
+
+### "R2 bucket not configured"
+Make sure you created the bucket with the exact name `obsidian-shared-notes` in Step 2.
+
+### "Invalid API key"
+Make sure the API key in Obsidian matches exactly what you set in Cloudflare (Step 3).
+
+### "Server not reachable"
+Check that your Worker URL is correct and the worker is deployed.
+
+## Custom Domain (Optional)
+
+To use a custom domain like `notes.yourdomain.com`:
+
+1. Go to your worker in Cloudflare Dashboard
+2. Click **Settings** > **Triggers**
+3. Add a **Custom Domain**
+4. Enter your domain and follow the DNS setup
+
+## Architecture
 
 ```
-obsidian-note-share/
-├── plugin/     # Obsidian plugin
-└── worker/     # Cloudflare Worker (API + rendering)
+Obsidian Plugin → Cloudflare Worker → R2 Storage
+                         ↓
+                  Rendered HTML (public)
 ```
 
-## Setup
-
-### 1. Cloudflare Worker
-
-```bash
-cd worker
-npm install
-
-# Create R2 bucket in Cloudflare dashboard:
-# - Name: obsidian-shared-notes
-
-# Set your API key
-wrangler secret put API_KEY
-
-# Deploy
-npm run deploy
-```
-
-After deploying, note your worker URL (e.g., `https://obsidian-note-share.your-account.workers.dev`).
-
-For a custom domain, configure it in Cloudflare dashboard under Workers > your worker > Settings > Domains & Routes.
-
-### 2. Obsidian Plugin
-
-```bash
-cd plugin
-npm install
-npm run build
-```
-
-Copy the following files to your vault's `.obsidian/plugins/obsidian-note-share/` folder:
-- `main.js`
-- `manifest.json`
-- `styles.css`
-
-Or for development:
-```bash
-# Symlink to your vault
-ln -s $(pwd) /path/to/vault/.obsidian/plugins/obsidian-note-share
-npm run dev  # Auto-rebuild on changes
-```
-
-### 3. Configure Plugin
-
-1. Enable the plugin in Obsidian settings
-2. Go to Note Share settings:
-   - **Server URL**: Your worker URL
-   - **API Key**: Same key you set with `wrangler secret`
-3. Customize URL style and appearance settings
-
-## Usage
-
-- **Right-click a note** → "Share Note" → Link copied to clipboard
-- **Click the share icon** in the left ribbon to view shared notes
-- **Delete** shared notes from the sidebar panel
+- Notes are stored in R2 as JSON
+- Public URLs render notes as styled HTML
+- Theme syncs from your Obsidian vault
