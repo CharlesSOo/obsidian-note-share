@@ -34,6 +34,7 @@ export interface StoredNote {
   title: string;
   content: string;
   createdAt: string;
+  updatedAt: string;
   linkedNotes: { titleSlug: string; hash: string }[];
 }
 

@@ -46,10 +46,11 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, '');
 }
 
-// Helper: Generate short hash
-async function generateHash(text: string): Promise<string> {
+// Helper: Generate deterministic hash from vault + title
+// Same note always gets same URL, re-sharing updates content
+async function generateHash(vault: string, title: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(text + Date.now() + Math.random());
+  const data = encoder.encode(`${vault}:${title}`);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray
@@ -91,14 +92,22 @@ app.post('/api/share', async (c) => {
     }
 
     const titleSlug = slugify(body.title);
-    const hash = await generateHash(body.title);
+    const hash = await generateHash(body.vault, body.title);
     const linkedNotes: { titleSlug: string; hash: string }[] = [];
 
     // Store linked notes first
     if (body.linkedNotes && body.linkedNotes.length > 0) {
       for (const linked of body.linkedNotes) {
         const linkedTitleSlug = slugify(linked.title);
-        const linkedHash = await generateHash(linked.title);
+        const linkedHash = await generateHash(body.vault, linked.title);
+
+        // Check if linked note already exists (preserve createdAt)
+        let linkedCreatedAt = new Date().toISOString();
+        const existingLinked = await c.env.NOTES.get(`notes/${linkedTitleSlug}-${linkedHash}.json`);
+        if (existingLinked) {
+          const existing: StoredNote = await existingLinked.json();
+          linkedCreatedAt = existing.createdAt;
+        }
 
         const linkedNote: StoredNote = {
           vault: body.vault,
@@ -106,7 +115,8 @@ app.post('/api/share', async (c) => {
           hash: linkedHash,
           title: linked.title,
           content: linked.content,
-          createdAt: new Date().toISOString(),
+          createdAt: linkedCreatedAt,
+          updatedAt: new Date().toISOString(),
           linkedNotes: [],
         };
 
@@ -127,6 +137,14 @@ app.post('/api/share', async (c) => {
       }
     }
 
+    // Check if main note already exists (preserve createdAt)
+    let createdAt = new Date().toISOString();
+    const existingNote = await c.env.NOTES.get(`notes/${titleSlug}-${hash}.json`);
+    if (existingNote) {
+      const existing: StoredNote = await existingNote.json();
+      createdAt = existing.createdAt;
+    }
+
     // Store main note
     const note: StoredNote = {
       vault: body.vault,
@@ -134,7 +152,8 @@ app.post('/api/share', async (c) => {
       hash,
       title: body.title,
       content: body.content,
-      createdAt: new Date().toISOString(),
+      createdAt,
+      updatedAt: new Date().toISOString(),
       linkedNotes,
     };
 
