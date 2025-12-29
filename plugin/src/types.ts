@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: NoteShareSettings = {
   vaultName: '',
   includeLinkedNotes: false,
   autoSync: true,
-  autoSyncDelay: 2,
+  autoSyncDelay: 1,
   sharedNotes: {},
 };
 

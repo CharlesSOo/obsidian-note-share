@@ -132,10 +132,10 @@ export class NoteShareSettingTab extends PluginSettingTab {
       .setDesc('How often to sync while editing, and how long to wait after editing stops')
       .addText((text) =>
         text
-          .setPlaceholder('2')
-          .setValue(String(this.plugin.settings.autoSyncDelay || 2))
+          .setPlaceholder('1')
+          .setValue(String(this.plugin.settings.autoSyncDelay || 1))
           .onChange(async (value) => {
-            const num = parseInt(value) || 2;
+            const num = parseInt(value) || 1;
             this.plugin.settings.autoSyncDelay = Math.max(1, Math.min(30, num));
             await this.plugin.saveSettings();
           })

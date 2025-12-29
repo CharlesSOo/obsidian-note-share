@@ -113,7 +113,7 @@ export default class NoteSharePlugin extends Plugin {
     const entry = this.settings.sharedNotes?.[file.path];
     if (!entry) return; // Not a shared note
 
-    const delay = (this.settings.autoSyncDelay || 2) * 60 * 1000;
+    const delay = (this.settings.autoSyncDelay || 1) * 60 * 1000;
 
     // Start interval if not already running (syncs every 2 min)
     if (!this.syncIntervals.has(file.path)) {
@@ -312,32 +312,35 @@ export default class NoteSharePlugin extends Plugin {
 
     let processedContent = content;
 
-    // Match Obsidian-style image embeds: ![[image.png]] or ![[folder/image.png]]
-    const obsidianImageRegex = /!\[\[([^\]]+\.(png|jpg|jpeg|gif|webp|svg))\]\]/gi;
-    const obsidianMatches = [...content.matchAll(obsidianImageRegex)];
+    // Match ALL Obsidian-style embeds: ![[anything]] - we'll check if it's an image after resolving
+    const obsidianEmbedRegex = /!\[\[([^\]]+)\]\]/gi;
+    const obsidianMatches = [...content.matchAll(obsidianEmbedRegex)];
 
     // Match markdown-style images: ![alt](path.png)
     const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+\.(png|jpg|jpeg|gif|webp|svg))\)/gi;
     const markdownMatches = [...content.matchAll(markdownImageRegex)];
 
     // Process Obsidian-style embeds
-    for (const match of obsidianMatches) {
-      const imagePath = match[1];
-      const imageFile = this.app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'];
 
-      if (imageFile instanceof TFile) {
+    for (const match of obsidianMatches) {
+      const embedPath = match[1];
+      const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(embedPath, file.path);
+
+      // Check if it's an image file
+      if (resolvedFile instanceof TFile && imageExtensions.includes(resolvedFile.extension.toLowerCase())) {
         try {
-          const imageData = await this.app.vault.readBinary(imageFile);
-          const ext = imageFile.extension.toLowerCase();
+          const imageData = await this.app.vault.readBinary(resolvedFile);
+          const ext = resolvedFile.extension.toLowerCase();
           const contentType = this.getContentType(ext);
-          const filename = encodeURIComponent(imageFile.name);
+          const filename = encodeURIComponent(resolvedFile.name);
 
           const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
 
           // Replace all occurrences of this embed with markdown image
-          processedContent = processedContent.split(match[0]).join(`![${imageFile.basename}](${result.url})`);
+          processedContent = processedContent.split(match[0]).join(`![${resolvedFile.basename}](${result.url})`);
         } catch (e) {
-          console.error(`Failed to upload image ${imagePath}:`, e);
+          console.error(`Failed to upload image ${embedPath}:`, e);
         }
       }
     }
