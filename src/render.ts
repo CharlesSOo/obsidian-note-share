@@ -18,7 +18,7 @@ const DEFAULT_THEME: ThemeSettings = {
   fontSize: 16,
 };
 
-export function renderNote(note: StoredNote, theme: ThemeSettings | null, baseUrl: string): string {
+export function renderNote(note: StoredNote, theme: ThemeSettings | undefined, baseUrl: string): string {
   const t = theme || DEFAULT_THEME;
 
   // Pre-process Obsidian-specific syntax

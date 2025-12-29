@@ -2,86 +2,68 @@
 
 Share Obsidian notes via permanent links hosted on your own Cloudflare Worker.
 
-## Quick Setup
+## Setup
 
 ### Prerequisites
-- GitHub account
 - Cloudflare account (free tier works)
+- GitHub account
 
-### Step 1: Deploy the Worker
+### 1. Deploy the Worker
 
-Click the button below to deploy this worker to your Cloudflare account:
+Click to deploy this worker to your Cloudflare account:
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/CharlesSOo/Obsidian-share)
 
-This will:
-1. Fork this repository to your GitHub
-2. Deploy the worker to your Cloudflare account
-3. Create the R2 storage bucket automatically
+This will fork the repo and deploy the worker with R2 storage.
 
-### Step 2: Set Your API Key
+### 2. Set Your API Key
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages**
-2. Click on your **obsidian-note-share** worker
-3. Go to **Settings** → **Variables and Secrets**
-4. Click **+ Add**
-5. Set:
-   - **Type**: Secret
+2. Click your **obsidian-note-share** worker → **Settings** → **Variables and Secrets**
+3. Add a new secret:
    - **Variable name**: `API_KEY`
-   - **Value**: A secure secret (generate one at [randomkeygen.com](https://randomkeygen.com/))
-6. Click **Add variable**, then **Deploy**
+   - **Value**: A secure password (generate at [randomkeygen.com](https://randomkeygen.com/))
+4. Click **Deploy**
 
-### Step 3: Get Your Worker URL
+### 3. Get Your Worker URL
 
-In your worker's overview page, find the URL:
+Find your URL in the worker's overview:
 ```
 https://obsidian-note-share.YOUR-SUBDOMAIN.workers.dev
 ```
 
-### Step 4: Configure Obsidian Plugin
+### 4. Install the Plugin
 
-1. Install the **Note Share** plugin in Obsidian
-2. Open **Settings** → **Note Share**
-3. Enter your **Server URL** (include `https://`)
-4. Enter your **API Key** (same value from Step 2)
-5. Click **Test Connection** to verify
+**Option A: BRAT (recommended)**
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
+2. Add beta plugin: `CharlesSOo/Obsidian-share`
+
+**Option B: Manual**
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [plugin folder](./plugin)
+2. Create folder: `.obsidian/plugins/obsidian-note-share/`
+3. Copy files into that folder
+4. Enable the plugin in Settings → Community Plugins
+
+### 5. Configure the Plugin
+
+1. **Settings** → **Note Share**
+2. Enter your **Server URL** and **API Key**
+3. Click **Test Connection**
 
 ## Usage
 
-- **Right-click** a note → **Share Note** → Link copied to clipboard
-- **Sidebar** → View/manage all shared notes, sync theme
+- **Right-click a note** → **Share Note** → Link copied instantly
+- **Sidebar** → View all shared notes, copy links, or delete
 
 ## Troubleshooting
 
-### "Server not reachable"
-- Make sure the URL includes `https://`
-- Check that your worker is deployed
-
-### "Invalid API key"
-- Make sure the API key in Obsidian matches exactly what you set in Cloudflare
-- Verify the variable name is exactly `API_KEY`
-
-### "R2 bucket not configured"
-The deploy button should create this automatically. If not:
-1. Go to Cloudflare Dashboard → **R2 Object Storage**
-2. Create a bucket named exactly: `obsidian-shared-notes`
+| Error | Fix |
+|-------|-----|
+| Server not reachable | Include `https://` in the URL |
+| Invalid API key | Ensure the key matches exactly; variable must be `API_KEY` |
+| R2 bucket not configured | Create bucket named `obsidian-shared-notes` in R2 dashboard |
 
 ## Custom Domain (Optional)
 
-To use a custom domain like `share.yourdomain.com`:
-
-1. Go to your worker → **Settings** → **Domains & Routes**
-2. Add your custom domain
-3. DNS will be configured automatically if your domain is on Cloudflare
-
-## How It Works
-
-```
-Obsidian Plugin → Cloudflare Worker → R2 Storage
-                         ↓
-                  Rendered HTML (public URLs)
-```
-
-- Notes stored privately in your R2 bucket
-- Shared via URLs like: `https://your-worker.dev/g/vault/note-title/hash`
-- Your Obsidian theme colors sync automatically
+1. Worker → **Settings** → **Domains & Routes**
+2. Add your domain (auto-configured if on Cloudflare DNS)

@@ -13,28 +13,15 @@ export class NoteShareSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Note Share Settings' });
-
-    // Server Settings
-    containerEl.createEl('h3', { text: 'Server' });
-
-    new Setting(containerEl)
-      .setName('Setup Guide')
-      .setDesc('Need help setting up your Cloudflare Worker?')
-      .addButton((button) =>
-        button
-          .setButtonText('Open Setup Guide')
-          .onClick(() => {
-            window.open('https://github.com/CharlesSOo/Obsidian-share#readme');
-          })
-      );
+    // Connection
+    containerEl.createEl('h3', { text: 'Connection' });
 
     new Setting(containerEl)
       .setName('Server URL')
-      .setDesc('Your Cloudflare Worker URL (e.g., https://notes.example.com)')
+      .setDesc('Your Cloudflare Worker URL')
       .addText((text) =>
         text
-          .setPlaceholder('https://notes.example.com')
+          .setPlaceholder('https://notes.yourname.workers.dev')
           .setValue(this.plugin.settings.serverUrl)
           .onChange(async (value) => {
             this.plugin.settings.serverUrl = value.replace(/\/$/, '');
@@ -44,7 +31,7 @@ export class NoteShareSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('API Key')
-      .setDesc('Secret key for authenticating with your worker (set in Cloudflare dashboard)')
+      .setDesc('Secret key set in Cloudflare dashboard')
       .addText((text) =>
         text
           .setPlaceholder('your-secret-api-key')
@@ -56,8 +43,7 @@ export class NoteShareSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Test Connection')
-      .setDesc('Verify your worker is reachable and configured correctly')
+      .setName('')
       .addButton((button) =>
         button
           .setButtonText('Test Connection')
@@ -67,26 +53,29 @@ export class NoteShareSettingTab extends PluginSettingTab {
 
             try {
               const result = await this.plugin.api.checkStatus();
-              if (result.success) {
-                new Notice(result.message);
-              } else {
-                new Notice(result.message);
-              }
+              new Notice(result.message);
             } finally {
               button.setDisabled(false);
               button.setButtonText('Test Connection');
             }
           })
+      )
+      .addButton((button) =>
+        button
+          .setButtonText('Setup Guide')
+          .onClick(() => {
+            window.open('https://github.com/CharlesSOo/Obsidian-share#readme');
+          })
       );
 
-    // Vault Settings
-    containerEl.createEl('h3', { text: 'Vault' });
+    // Behavior
+    containerEl.createEl('h3', { text: 'Behavior' });
 
     const detectedVaultName = this.plugin.getVaultSlug();
 
     new Setting(containerEl)
-      .setName('Vault Name')
-      .setDesc(`Used in share URLs. Leave empty to use detected name: "${detectedVaultName}"`)
+      .setName('Vault name override')
+      .setDesc(`Used in URLs. Default: "${detectedVaultName}"`)
       .addText((text) =>
         text
           .setPlaceholder(detectedVaultName)
@@ -97,12 +86,9 @@ export class NoteShareSettingTab extends PluginSettingTab {
           })
       );
 
-    // Sharing Options
-    containerEl.createEl('h3', { text: 'Sharing' });
-
     new Setting(containerEl)
-      .setName('Include Linked Notes')
-      .setDesc('Automatically share notes linked from the main note')
+      .setName('Include linked notes')
+      .setDesc('Share notes linked via [[wikilinks]] together')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.includeLinkedNotes)
@@ -113,24 +99,8 @@ export class NoteShareSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Auto-delete after (days)')
-      .setDesc('Automatically delete shared notes after this many days (0 = never)')
-      .addText((text) =>
-        text
-          .setPlaceholder('0')
-          .setValue(String(this.plugin.settings.autoDeleteDays || 0))
-          .onChange(async (value) => {
-            this.plugin.settings.autoDeleteDays = Math.max(0, parseInt(value) || 0);
-            await this.plugin.saveSettings();
-          })
-      );
-
-    // Auto-sync Settings
-    containerEl.createEl('h3', { text: 'Auto-sync' });
-
-    new Setting(containerEl)
-      .setName('Auto-sync shared notes')
-      .setDesc('Automatically re-upload shared notes when edited')
+      .setName('Auto-sync edits')
+      .setDesc('Re-upload shared notes when you edit them')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.autoSync ?? true)
@@ -142,7 +112,7 @@ export class NoteShareSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Sync delay (minutes)')
-      .setDesc('How often to sync while editing, and how long to wait after editing stops')
+      .setDesc('Time between syncs while editing (1-30)')
       .addText((text) =>
         text
           .setPlaceholder('1')
@@ -154,15 +124,17 @@ export class NoteShareSettingTab extends PluginSettingTab {
           })
       );
 
-    // Theme Info
-    containerEl.createEl('h3', { text: 'Theme' });
-
-    const themeInfo = containerEl.createEl('p', {
-      cls: 'setting-item-description',
-    });
-    themeInfo.innerHTML = `
-      Your current Obsidian theme colors are automatically detected and synced.<br>
-      Use the <strong>Sync Theme</strong> button in the sidebar to update shared notes after changing themes.
-    `;
+    new Setting(containerEl)
+      .setName('Auto-delete after (days)')
+      .setDesc('Delete shared notes after N days (0 = never)')
+      .addText((text) =>
+        text
+          .setPlaceholder('0')
+          .setValue(String(this.plugin.settings.autoDeleteDays || 0))
+          .onChange(async (value) => {
+            this.plugin.settings.autoDeleteDays = Math.max(0, parseInt(value) || 0);
+            await this.plugin.saveSettings();
+          })
+      );
   }
 }

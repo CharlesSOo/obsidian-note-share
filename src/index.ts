@@ -3,6 +3,11 @@ import { cors } from 'hono/cors';
 import { Env, ShareRequest, StoredNote, NoteIndex, ThemeSyncRequest, ThemeSettings } from './types';
 import { renderNote } from './render';
 
+// Hash bytes to use for URL (4 bytes = 8 hex chars)
+const HASH_BYTES = 4;
+// Cache duration for images (1 year in seconds)
+const IMAGE_CACHE_MAX_AGE = 31536000;
+
 const app = new Hono<{ Bindings: Env }>();
 
 // Enable CORS for plugin requests
@@ -54,7 +59,7 @@ async function generateHash(vault: string, title: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray
-    .slice(0, 4)
+    .slice(0, HASH_BYTES)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
@@ -262,7 +267,7 @@ app.get('/i/:noteHash/:filename', async (c) => {
 
     const headers = new Headers();
     headers.set('Content-Type', obj.httpMetadata?.contentType || 'application/octet-stream');
-    headers.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    headers.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
 
     return new Response(obj.body, { headers });
   } catch (e) {
@@ -292,7 +297,7 @@ app.get('/g/:vault/:titleSlug/:hash', async (c) => {
     }
 
     // Get theme from the note's vault
-    let theme: ThemeSettings | null = null;
+    let theme: ThemeSettings | undefined;
     const themeObj = await c.env.NOTES.get(`${vault}/theme.json`);
     if (themeObj) {
       theme = await themeObj.json();

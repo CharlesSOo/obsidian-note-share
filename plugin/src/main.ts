@@ -4,6 +4,12 @@ import { NoteShareAPI } from './api';
 import { NoteShareSettingTab } from './settings';
 import { SharedNotesView, VIEW_TYPE_SHARED_NOTES } from './sidebar';
 
+// Regex for Obsidian-style image embeds: ![[path]] or ![[path|alias]]
+const OBSIDIAN_EMBED_REGEX = /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/gi;
+
+// Hash bytes to use for URL (4 bytes = 8 hex chars)
+const HASH_BYTES = 4;
+
 export default class NoteSharePlugin extends Plugin {
   settings: NoteShareSettings;
   api: NoteShareAPI;
@@ -170,7 +176,7 @@ export default class NoteSharePlugin extends Plugin {
         await this.saveSettings();
       }
     } catch (e) {
-      console.error('Auto-sync failed:', e);
+      console.error('[NoteShare] Auto-sync failed:', e);
     }
   }
 
@@ -232,7 +238,7 @@ export default class NoteSharePlugin extends Plugin {
       await this.api.syncTheme({ vault, theme });
       new Notice('Theme synced successfully');
     } catch (e) {
-      console.error('Failed to sync theme:', e);
+      console.error('[NoteShare] Failed to sync theme:', e);
       new Notice(`Failed to sync theme: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   }
@@ -302,7 +308,7 @@ export default class NoteSharePlugin extends Plugin {
         await view.refresh();
       }
     } catch (e) {
-      console.error('Failed to share note:', e);
+      console.error('[NoteShare] Failed to share note:', e);
       new Notice(`Failed to share note: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   }
@@ -319,7 +325,7 @@ export default class NoteSharePlugin extends Plugin {
     const data = encoder.encode(`${vault}:${title}`);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.slice(0, HASH_BYTES).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   async processImages(file: TFile, content: string): Promise<string> {
@@ -331,8 +337,7 @@ export default class NoteSharePlugin extends Plugin {
     let processedContent = content;
 
     // Match ALL Obsidian-style embeds: ![[path]] or ![[path|alias]]
-    const obsidianEmbedRegex = /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/gi;
-    const obsidianMatches = [...content.matchAll(obsidianEmbedRegex)];
+    const obsidianMatches = [...content.matchAll(OBSIDIAN_EMBED_REGEX)];
 
     // Match markdown-style images: ![alt](path.png)
     const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+\.(png|jpg|jpeg|gif|webp|svg))\)/gi;
@@ -365,22 +370,10 @@ export default class NoteSharePlugin extends Plugin {
         continue;
       }
 
-      try {
-        console.log(`[NoteShare] Uploading image: ${resolvedFile.path}`);
-        const imageData = await this.app.vault.readBinary(resolvedFile);
-        const ext = resolvedFile.extension.toLowerCase();
-        const contentType = this.getContentType(ext);
-        const filename = resolvedFile.name; // Don't encode - server handles URL encoding
-
-        const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
-        console.log(`[NoteShare] Image uploaded: ${result.url}`);
-
-        // Replace all occurrences of this embed with markdown image
-        // Use alias if provided, otherwise use file basename
+      const imageUrl = await this.uploadImageFile(resolvedFile, noteHash);
+      if (imageUrl) {
         const altText = alias || resolvedFile.basename;
-        processedContent = processedContent.split(match[0]).join(`![${altText}](${result.url})`);
-      } catch (e) {
-        console.error(`[NoteShare] Failed to upload image ${embedPath}:`, e);
+        processedContent = processedContent.replaceAll(match[0], `![${altText}](${imageUrl})`);
       }
     }
 
@@ -396,18 +389,9 @@ export default class NoteSharePlugin extends Plugin {
       const imageFile = this.app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
 
       if (imageFile instanceof TFile) {
-        try {
-          const imageData = await this.app.vault.readBinary(imageFile);
-          const ext = imageFile.extension.toLowerCase();
-          const contentType = this.getContentType(ext);
-          const filename = imageFile.name; // Don't encode - server handles URL encoding
-
-          const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
-
-          // Replace all occurrences with uploaded URL
-          processedContent = processedContent.split(fullMatch).join(`![${alt}](${result.url})`);
-        } catch (e) {
-          console.error(`Failed to upload image ${imagePath}:`, e);
+        const imageUrl = await this.uploadImageFile(imageFile, noteHash);
+        if (imageUrl) {
+          processedContent = processedContent.replaceAll(fullMatch, `![${alt}](${imageUrl})`);
         }
       }
     }
@@ -415,7 +399,7 @@ export default class NoteSharePlugin extends Plugin {
     // Clean up any remaining image embeds that couldn't be processed
     // This prevents them from breaking internal link processing on the server
     processedContent = processedContent.replace(
-      /!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/gi,
+      OBSIDIAN_EMBED_REGEX,
       (match, path, alias) => `[Image: ${alias || path}]`
     );
 
@@ -432,6 +416,23 @@ export default class NoteSharePlugin extends Plugin {
       svg: 'image/svg+xml',
     };
     return types[ext] || 'application/octet-stream';
+  }
+
+  private async uploadImageFile(imageFile: TFile, noteHash: string): Promise<string | undefined> {
+    try {
+      console.log(`[NoteShare] Uploading image: ${imageFile.path}`);
+      const imageData = await this.app.vault.readBinary(imageFile);
+      const ext = imageFile.extension.toLowerCase();
+      const contentType = this.getContentType(ext);
+      const filename = imageFile.name;
+
+      const result = await this.api.uploadImage(noteHash, filename, imageData, contentType);
+      console.log(`[NoteShare] Image uploaded: ${result.url}`);
+      return result.url;
+    } catch (e) {
+      console.error(`[NoteShare] Failed to upload image ${imageFile.path}:`, e);
+      return undefined;
+    }
   }
 
   async getLinkedNotes(file: TFile): Promise<{ title: string; content: string }[]> {
