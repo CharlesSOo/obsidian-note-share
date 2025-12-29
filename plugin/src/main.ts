@@ -13,6 +13,39 @@ const HASH_BYTES = 4;
 // WebP compression quality (0-1)
 const WEBP_QUALITY = 0.85;
 
+// Max concurrent uploads/operations
+const MAX_CONCURRENT = 20;
+
+// Semaphore for limiting concurrent operations
+class Semaphore {
+  private running = 0;
+  private queue: (() => void)[] = [];
+
+  async acquire(): Promise<void> {
+    if (this.running < MAX_CONCURRENT) {
+      this.running++;
+      return;
+    }
+    await new Promise<void>((resolve) => this.queue.push(resolve));
+    this.running++;
+  }
+
+  release(): void {
+    this.running--;
+    const next = this.queue.shift();
+    if (next) next();
+  }
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
 export default class NoteSharePlugin extends Plugin {
   settings: NoteShareSettings;
   api: NoteShareAPI;
@@ -164,8 +197,11 @@ export default class NoteSharePlugin extends Plugin {
       const content = await this.app.vault.read(file);
       const vault = this.getEffectiveVaultSlug();
 
+      // Create semaphore for parallel image uploads
+      const semaphore = new Semaphore();
+
       // Process images and get rewritten content
-      const processedContent = await this.processImages(file, content);
+      const processedContent = await this.processImages(file, content, semaphore);
 
       await this.api.shareNote({
         vault,
@@ -265,9 +301,23 @@ export default class NoteSharePlugin extends Plugin {
       await navigator.clipboard.writeText(url);
       new Notice(`Link copied! Uploading...`);
 
-      // Now do the slow work: read content, process images, upload
+      // Create shared semaphore for all parallel operations
+      const semaphore = new Semaphore();
+
+      // Read main note content
       const content = await this.app.vault.read(file);
-      const processedContent = await this.processImages(file, content);
+
+      // Start main note images FIRST (queued first in semaphore)
+      const mainImagesPromise = this.processImages(file, content, semaphore);
+
+      // Start linked notes processing (queued after main images)
+      const shouldIncludeLinks = includeLinks || this.settings.includeLinkedNotes;
+      const linkedNotesPromise = shouldIncludeLinks
+        ? this.getLinkedNotes(file, semaphore)
+        : Promise.resolve([]);
+
+      // Wait for main note images first
+      const processedContent = await mainImagesPromise;
 
       const request: ShareRequest = {
         vault,
@@ -276,12 +326,10 @@ export default class NoteSharePlugin extends Plugin {
         retentionDays: this.settings.autoDeleteDays || 0,
       };
 
-      // Handle linked notes
-      if (includeLinks || this.settings.includeLinkedNotes) {
-        const linkedNotes = await this.getLinkedNotes(file);
-        if (linkedNotes.length > 0) {
-          request.linkedNotes = linkedNotes;
-        }
+      // Wait for linked notes
+      const linkedNotes = await linkedNotesPromise;
+      if (linkedNotes.length > 0) {
+        request.linkedNotes = linkedNotes;
       }
 
       // Sync theme and upload note
@@ -331,7 +379,9 @@ export default class NoteSharePlugin extends Plugin {
     return hashArray.slice(0, HASH_BYTES).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  async processImages(file: TFile, content: string): Promise<string> {
+  async processImages(file: TFile, content: string, semaphore?: Semaphore): Promise<string> {
+    const sem = semaphore ?? new Semaphore();
+
     // Generate hash for this note (same logic as server)
     const vault = this.getEffectiveVaultSlug();
     const title = file.basename;
@@ -346,56 +396,75 @@ export default class NoteSharePlugin extends Plugin {
     const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+\.(png|jpg|jpeg|gif|webp|svg))\)/gi;
     const markdownMatches = [...content.matchAll(markdownImageRegex)];
 
-    // Process Obsidian-style embeds
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'];
 
+    // Build upload tasks for Obsidian-style embeds
+    type UploadResult = { original: string; replacement: string } | undefined;
+    const obsidianTasks: Promise<UploadResult>[] = [];
+
     for (const match of obsidianMatches) {
-      const embedPath = match[1];  // Just the path, alias is parsed out
-      const alias = match[2];      // Optional alias for alt text
-      console.log(`[NoteShare] Processing embed: ![[${embedPath}${alias ? '|' + alias : ''}]]`);
+      const embedPath = match[1];
+      const alias = match[2];
+      const originalText = match[0];
 
       const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(embedPath, file.path);
 
-      if (!resolvedFile) {
-        console.log(`[NoteShare] Could not resolve file: ${embedPath}`);
+      if (!resolvedFile || !(resolvedFile instanceof TFile)) {
+        console.log(`[NoteShare] Could not resolve: ${embedPath}`);
         continue;
       }
-
-      if (!(resolvedFile instanceof TFile)) {
-        console.log(`[NoteShare] Resolved to non-file: ${embedPath}`);
-        continue;
-      }
-
-      console.log(`[NoteShare] Resolved: ${resolvedFile.path} (ext: ${resolvedFile.extension})`);
 
       if (!imageExtensions.includes(resolvedFile.extension.toLowerCase())) {
-        console.log(`[NoteShare] Not an image extension: ${resolvedFile.extension}`);
+        console.log(`[NoteShare] Not an image: ${embedPath}`);
         continue;
       }
 
-      const imageUrl = await this.uploadImageFile(resolvedFile, noteHash);
-      if (imageUrl) {
-        const altText = alias || resolvedFile.basename;
-        processedContent = processedContent.replaceAll(match[0], `![${altText}](${imageUrl})`);
-      }
+      // Queue upload task
+      obsidianTasks.push(
+        sem.run(async () => {
+          console.log(`[NoteShare] Uploading: ${resolvedFile.path}`);
+          const imageUrl = await this.uploadImageFile(resolvedFile, noteHash);
+          if (imageUrl) {
+            const altText = alias || resolvedFile.basename;
+            return { original: originalText, replacement: `![${altText}](${imageUrl})` };
+          }
+          return undefined;
+        })
+      );
     }
 
-    // Process markdown-style images (local paths only)
+    // Build upload tasks for markdown-style images
+    const markdownTasks: Promise<UploadResult>[] = [];
+
     for (const match of markdownMatches) {
       const fullMatch = match[0];
       const alt = match[1];
       const imagePath = match[2];
 
-      // Skip if already a URL
       if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) continue;
 
       const imageFile = this.app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
 
       if (imageFile instanceof TFile) {
-        const imageUrl = await this.uploadImageFile(imageFile, noteHash);
-        if (imageUrl) {
-          processedContent = processedContent.replaceAll(fullMatch, `![${alt}](${imageUrl})`);
-        }
+        markdownTasks.push(
+          sem.run(async () => {
+            const imageUrl = await this.uploadImageFile(imageFile, noteHash);
+            if (imageUrl) {
+              return { original: fullMatch, replacement: `![${alt}](${imageUrl})` };
+            }
+            return undefined;
+          })
+        );
+      }
+    }
+
+    // Run all uploads in parallel (semaphore limits concurrency)
+    const allResults = await Promise.all([...obsidianTasks, ...markdownTasks]);
+
+    // Apply all replacements
+    for (const result of allResults) {
+      if (result) {
+        processedContent = processedContent.replaceAll(result.original, result.replacement);
       }
     }
 
@@ -490,25 +559,34 @@ export default class NoteSharePlugin extends Plugin {
     });
   }
 
-  async getLinkedNotes(file: TFile): Promise<{ title: string; content: string }[]> {
-    const linkedNotes: { title: string; content: string }[] = [];
+  async getLinkedNotes(file: TFile, semaphore: Semaphore): Promise<{ title: string; content: string }[]> {
     const cache = this.app.metadataCache.getFileCache(file);
 
-    if (!cache?.links) return linkedNotes;
+    if (!cache?.links) return [];
+
+    // Build tasks for all linked notes
+    type LinkedNoteResult = { title: string; content: string } | undefined;
+    const tasks: Promise<LinkedNoteResult>[] = [];
 
     for (const link of cache.links) {
       const linkedFile = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
 
       if (linkedFile instanceof TFile && linkedFile.extension === 'md') {
-        const content = await this.app.vault.read(linkedFile);
-        // Process images in linked notes too
-        const processedContent = await this.processImages(linkedFile, content);
-        const title = linkedFile.basename;
-        linkedNotes.push({ title, content: processedContent });
+        tasks.push(
+          semaphore.run(async () => {
+            console.log(`[NoteShare] Processing linked note: ${linkedFile.path}`);
+            const content = await this.app.vault.read(linkedFile);
+            // Pass same semaphore to processImages
+            const processedContent = await this.processImages(linkedFile, content, semaphore);
+            return { title: linkedFile.basename, content: processedContent };
+          })
+        );
       }
     }
 
-    return linkedNotes;
+    // Run all in parallel (semaphore limits concurrency)
+    const results = await Promise.all(tasks);
+    return results.filter((n): n is { title: string; content: string } => n !== undefined);
   }
 
   onunload() {
