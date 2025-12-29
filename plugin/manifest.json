@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-note-share",
+  "name": "Note Share",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Share notes via permanent links hosted on Cloudflare",
+  "author": "Charles",
+  "isDesktopOnly": false
+}

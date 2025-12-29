@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+plugin/main.js
+plugin/main.js.map
+
+# Cloudflare
+worker/.wrangler/
+worker/.dev.vars
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

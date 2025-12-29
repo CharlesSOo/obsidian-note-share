@@ -1,0 +1,7 @@
+[deploy]
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[deploy.r2_buckets]]
+binding = "NOTES"
+bucket_name = "obsidian-shared-notes"
