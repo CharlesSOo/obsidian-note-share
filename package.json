@@ -13,6 +13,7 @@
     "wrangler": "^3.22.0"
   },
   "dependencies": {
+    "@obsidian-note-share/shared": "file:./shared",
     "hono": "^4.0.0",
     "marked": "^11.1.0"
   }

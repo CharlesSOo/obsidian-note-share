@@ -10,6 +10,9 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "@obsidian-note-share/shared": "file:../shared"
+  },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "builtin-modules": "^3.3.0",

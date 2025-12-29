@@ -1,31 +1,16 @@
+// Re-export shared types
+export type {
+  ThemeSettings,
+  LinkedNote,
+  ShareRequest,
+  ThemeSyncRequest,
+} from '@obsidian-note-share/shared';
+
+// Worker-specific types
+
 export interface Env {
   NOTES: R2Bucket;
   API_KEY: string;
-}
-
-export interface ThemeSettings {
-  backgroundPrimary: string;
-  backgroundSecondary: string;
-  textNormal: string;
-  textMuted: string;
-  textAccent: string;
-  interactiveAccent: string;
-  codeBackground: string;
-  fontSize: number;
-  updatedAt?: string;
-}
-
-export interface ShareRequest {
-  vault: string;
-  title: string;
-  content: string;
-  linkedNotes?: LinkedNote[];
-  retentionDays?: number;
-}
-
-export interface LinkedNote {
-  title: string;
-  content: string;
 }
 
 export interface StoredNote {
@@ -47,9 +32,4 @@ export interface NoteIndex {
     title: string;
     createdAt: string;
   }[];
-}
-
-export interface ThemeSyncRequest {
-  vault: string;
-  theme: ThemeSettings;
 }

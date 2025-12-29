@@ -2,19 +2,30 @@
 
 Share Obsidian notes via permanent links hosted on your own Cloudflare Worker.
 
+## Features
+
+- **Instant sharing** - Right-click any note to share; link copied immediately
+- **Auto-sync** - Edits automatically update shared notes
+- **Linked notes** - Optionally share notes linked via `[[wikilinks]]`
+- **Image upload** - Embedded images uploaded and served (WebP compressed)
+- **Theme sync** - Your Obsidian theme colors apply to shared notes
+- **Auto-delete** - Optional expiration period for temporary shares
+- **Self-hosted** - Full control via your own Cloudflare account
+
 ## Setup
 
 ### Prerequisites
-- Cloudflare account (free tier works)
 - GitHub account
+- Cloudflare account with R2 enabled:
+  1. [Create a Cloudflare account](https://dash.cloudflare.com/sign-up) (free)
+  2. Go to **Storage & databases** → **R2 object storage**
+  3. Add payment method and select the free plan (10GB free, no charges for typical usage)
 
 ### 1. Deploy the Worker
 
-Click to deploy this worker to your Cloudflare account:
-
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/CharlesSOo/Obsidian-share)
 
-This will fork the repo and deploy the worker with R2 storage.
+This forks the repo and deploys the worker with R2 storage (auto-created).
 
 ### 2. Set Your API Key
 
@@ -60,8 +71,8 @@ https://obsidian-note-share.YOUR-SUBDOMAIN.workers.dev
 | Error | Fix |
 |-------|-----|
 | Server not reachable | Include `https://` in the URL |
-| Invalid API key | Ensure the key matches exactly; variable must be `API_KEY` |
-| R2 bucket not configured | Create bucket named `obsidian-shared-notes` in R2 dashboard |
+| Invalid API key | Ensure the key matches exactly; variable name must be `API_KEY` |
+| R2 bucket error | Create bucket named `obsidian-shared-notes` in R2 dashboard (usually auto-created) |
 
 ## Custom Domain (Optional)
 

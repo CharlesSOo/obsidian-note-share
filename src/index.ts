@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { slugify, generateNoteHash } from '@obsidian-note-share/shared';
 import { Env, ShareRequest, StoredNote, NoteIndex, ThemeSyncRequest, ThemeSettings } from './types';
 import { renderNote } from './render';
 
-// Hash bytes to use for URL (4 bytes = 8 hex chars)
-const HASH_BYTES = 4;
 // Cache duration for images (1 year in seconds)
 const IMAGE_CACHE_MAX_AGE = 31536000;
 
@@ -43,27 +42,6 @@ app.get('/api/status', async (c) => {
   }
 });
 
-// Helper: Generate slug from title
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
-// Helper: Generate deterministic hash from vault + title
-// Same note always gets same URL, re-sharing updates content
-async function generateHash(vault: string, title: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(`${vault}:${title}`);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray
-    .slice(0, HASH_BYTES)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
 // Sync theme for a vault
 app.put('/api/theme', async (c) => {
   try {
@@ -97,14 +75,14 @@ app.post('/api/share', async (c) => {
     }
 
     const titleSlug = slugify(body.title);
-    const hash = await generateHash(body.vault, body.title);
+    const hash = await generateNoteHash(body.vault, body.title);
     const linkedNotes: { titleSlug: string; hash: string }[] = [];
 
     // Store linked notes first
     if (body.linkedNotes && body.linkedNotes.length > 0) {
       for (const linked of body.linkedNotes) {
         const linkedTitleSlug = slugify(linked.title);
-        const linkedHash = await generateHash(body.vault, linked.title);
+        const linkedHash = await generateNoteHash(body.vault, linked.title);
 
         // Check if linked note already exists (preserve createdAt)
         let linkedCreatedAt = new Date().toISOString();

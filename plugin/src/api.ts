@@ -1,4 +1,4 @@
-import { NoteShareSettings, ShareRequest, ShareResponse, SharedNote, ThemeSettings, ThemeSyncRequest, ImageUploadResponse } from './types';
+import { NoteShareSettings, ShareRequest, ShareResponse, SharedNote, ThemeSyncRequest, ImageUploadResponse } from './types';
 
 export interface StatusResponse {
   status: 'ok' | 'error';
@@ -10,6 +10,14 @@ export interface StatusResponse {
 export interface ConnectionTestResult {
   success: boolean;
   message: string;
+}
+
+/**
+ * Handle API response errors consistently
+ */
+async function handleResponseError(response: Response, context: string): Promise<never> {
+  const errorText = await response.text().catch(() => 'Unknown error');
+  throw new Error(`${context}: ${errorText || response.statusText}`);
 }
 
 export class NoteShareAPI {
@@ -30,8 +38,7 @@ export class NoteShareAPI {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to share note: ${error}`);
+      await handleResponseError(response, 'Failed to share note');
     }
 
     return response.json();
@@ -44,7 +51,7 @@ export class NoteShareAPI {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch shared notes');
+      await handleResponseError(response, 'Failed to fetch notes');
     }
 
     return response.json();
@@ -60,7 +67,7 @@ export class NoteShareAPI {
     );
 
     if (!response.ok) {
-      throw new Error('Failed to delete note');
+      await handleResponseError(response, 'Failed to delete note');
     }
   }
 
@@ -72,8 +79,7 @@ export class NoteShareAPI {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to sync theme: ${error}`);
+      await handleResponseError(response, 'Failed to sync theme');
     }
   }
 
@@ -93,7 +99,7 @@ export class NoteShareAPI {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to upload image');
+      await handleResponseError(response, 'Failed to upload image');
     }
 
     return response.json();

@@ -43,10 +43,12 @@ export class NoteShareSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('')
+      .setName('Verify connection')
+      .setDesc('Test that your server URL and API key are configured correctly')
       .addButton((button) =>
         button
           .setButtonText('Test Connection')
+          .setCta()
           .onClick(async () => {
             button.setDisabled(true);
             button.setButtonText('Testing...');

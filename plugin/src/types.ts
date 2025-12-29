@@ -1,3 +1,14 @@
+// Re-export shared types
+export type {
+  ThemeSettings,
+  LinkedNote,
+  ShareRequest,
+  ShareResponse,
+  ThemeSyncRequest,
+} from '@obsidian-note-share/shared';
+
+// Plugin-specific types
+
 export interface SharedNoteEntry {
   filePath: string;
   titleSlug: string;
@@ -16,17 +27,6 @@ export interface NoteShareSettings {
   sharedNotes: Record<string, SharedNoteEntry>; // keyed by filePath
 }
 
-export interface ThemeSettings {
-  backgroundPrimary: string;
-  backgroundSecondary: string;
-  textNormal: string;
-  textMuted: string;
-  textAccent: string;
-  interactiveAccent: string;
-  codeBackground: string;
-  fontSize: number;
-}
-
 export const DEFAULT_SETTINGS: NoteShareSettings = {
   serverUrl: '',
   apiKey: '',
@@ -38,30 +38,11 @@ export const DEFAULT_SETTINGS: NoteShareSettings = {
   sharedNotes: {},
 };
 
-export interface ShareRequest {
-  vault: string;
-  title: string;
-  content: string;
-  linkedNotes?: { title: string; content: string }[];
-  retentionDays?: number;
-}
-
-export interface ShareResponse {
-  url: string;
-  titleSlug: string;
-  hash: string;
-}
-
 export interface SharedNote {
   titleSlug: string;
   hash: string;
   title: string;
   createdAt: string;
-}
-
-export interface ThemeSyncRequest {
-  vault: string;
-  theme: ThemeSettings;
 }
 
 export interface ImageUploadResponse {
