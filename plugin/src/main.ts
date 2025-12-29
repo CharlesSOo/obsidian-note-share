@@ -146,11 +146,15 @@ export default class NoteSharePlugin extends Plugin {
       const title = file.basename;
       const vault = this.getEffectiveVaultSlug();
 
+      console.log('Share request:', { vault, title, contentLength: content.length });
+
       const request: ShareRequest = {
         vault,
         title,
         content,
       };
+
+      console.log('Full request:', JSON.stringify(request).substring(0, 500));
 
       // Handle linked notes
       if (includeLinks || this.settings.includeLinkedNotes) {

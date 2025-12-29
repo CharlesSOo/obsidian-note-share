@@ -86,7 +86,7 @@ app.post('/api/share', async (c) => {
   try {
     const body = await c.req.json<ShareRequest>();
 
-    if (!body.vault || !body.title || !body.content) {
+    if (!body.vault || !body.title || body.content === undefined) {
       return c.json({ error: 'Missing required fields' }, 400);
     }
 

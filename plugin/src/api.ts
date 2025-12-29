@@ -23,11 +23,19 @@ export class NoteShareAPI {
   }
 
   async shareNote(request: ShareRequest): Promise<ShareResponse> {
-    const response = await fetch(`${this.settings.serverUrl}/api/share`, {
+    const url = `${this.settings.serverUrl}/api/share`;
+    const body = JSON.stringify(request);
+    console.log('API shareNote URL:', url);
+    console.log('API shareNote body:', body.substring(0, 500));
+    console.log('API shareNote headers:', this.headers);
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: this.headers,
-      body: JSON.stringify(request),
+      body,
     });
+
+    console.log('API shareNote response status:', response.status);
 
     if (!response.ok) {
       const error = await response.text();
