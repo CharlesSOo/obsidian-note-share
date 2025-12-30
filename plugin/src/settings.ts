@@ -70,6 +70,25 @@ export class NoteShareSettingTab extends PluginSettingTab {
           })
       );
 
+    new Setting(containerEl)
+      .setName('Theme')
+      .setDesc('Sync your Obsidian theme colors to shared notes')
+      .addButton((button) =>
+        button
+          .setButtonText('Sync Theme')
+          .onClick(async () => {
+            button.setDisabled(true);
+            button.setButtonText('Syncing...');
+
+            try {
+              await this.plugin.syncTheme();
+            } finally {
+              button.setDisabled(false);
+              button.setButtonText('Sync Theme');
+            }
+          })
+      );
+
     // Behavior
     containerEl.createEl('h3', { text: 'Behavior' });
 

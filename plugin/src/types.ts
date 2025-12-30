@@ -25,6 +25,7 @@ export interface NoteShareSettings {
   autoSyncDelay: number; // minutes
   autoDeleteDays: number; // 0 = never, else days until auto-delete
   sharedNotes: Record<string, SharedNoteEntry>; // keyed by filePath
+  lastThemeHash?: string; // hash of last synced theme
 }
 
 export const DEFAULT_SETTINGS: NoteShareSettings = {

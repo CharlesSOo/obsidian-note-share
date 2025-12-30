@@ -18,6 +18,11 @@ export default class NoteSharePlugin extends Plugin {
     await this.loadSettings();
     this.api = new NoteShareAPI(this.settings);
 
+    // Check and sync theme if changed (runs after workspace is ready)
+    this.app.workspace.onLayoutReady(() => {
+      this.checkAndSyncTheme();
+    });
+
     // Register sidebar view
     this.registerView(VIEW_TYPE_SHARED_NOTES, (leaf) => new SharedNotesView(leaf, this));
 
@@ -225,22 +230,51 @@ export default class NoteSharePlugin extends Plugin {
     };
   }
 
-  async syncTheme(): Promise<void> {
+  computeThemeHash(theme: ThemeSettings): string {
+    // Simple hash of theme JSON for change detection
+    const str = JSON.stringify(theme);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash.toString(16);
+  }
+
+  async checkAndSyncTheme(): Promise<void> {
+    if (!this.settings.serverUrl || !this.settings.apiKey) return;
+
+    const theme = this.getThemeFromObsidian();
+    const currentHash = this.computeThemeHash(theme);
+
+    if (currentHash !== this.settings.lastThemeHash) {
+      console.log('[NoteShare] Theme changed, syncing...');
+      await this.syncTheme(false); // silent sync on startup
+    }
+  }
+
+  async syncTheme(notify = true): Promise<void> {
     if (!this.settings.serverUrl || !this.settings.apiKey) {
-      new Notice('Please configure server URL and API key in settings');
+      if (notify) new Notice('Please configure server URL and API key in settings');
       return;
     }
 
     try {
-      new Notice('Syncing theme...');
+      if (notify) new Notice('Syncing theme...');
       const theme = this.getThemeFromObsidian();
       const vault = this.getEffectiveVaultSlug();
 
       await this.api.syncTheme({ vault, theme });
-      new Notice('Theme synced successfully');
+
+      // Save hash after successful sync
+      this.settings.lastThemeHash = this.computeThemeHash(theme);
+      await this.saveSettings();
+
+      if (notify) new Notice('Theme synced successfully');
     } catch (e) {
       console.error('[NoteShare] Failed to sync theme:', e);
-      new Notice(`Failed to sync theme: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      if (notify) new Notice(`Failed to sync theme: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   }
 
