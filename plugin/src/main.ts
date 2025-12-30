@@ -294,9 +294,7 @@ export default class NoteSharePlugin extends Plugin {
         request.linkedNotes = linkedNotes;
       }
 
-      // Sync theme and upload note
-      const theme = this.getThemeFromObsidian();
-      await this.api.syncTheme({ vault, theme });
+      // Upload note
       await this.api.shareNote(request);
 
       // Register as shared note for auto-sync
