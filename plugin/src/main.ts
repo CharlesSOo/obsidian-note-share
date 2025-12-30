@@ -216,6 +216,10 @@ export default class NoteSharePlugin extends Plugin {
     return this.settings.vaultName || this.getVaultSlug();
   }
 
+  getObsidianThemeMode(): 'light' | 'dark' {
+    return document.body.classList.contains('theme-dark') ? 'dark' : 'light';
+  }
+
   getThemeFromObsidian(): ThemeSettings {
     const style = getComputedStyle(document.body);
     return {
@@ -261,17 +265,18 @@ export default class NoteSharePlugin extends Plugin {
     }
 
     try {
-      if (notify) new Notice('Syncing theme...');
+      const mode = this.getObsidianThemeMode();
+      if (notify) new Notice(`Syncing ${mode} theme...`);
       const theme = this.getThemeFromObsidian();
       const vault = this.getEffectiveVaultSlug();
 
-      await this.api.syncTheme({ vault, theme });
+      await this.api.syncTheme({ vault, theme, mode });
 
       // Save hash after successful sync
       this.settings.lastThemeHash = this.computeThemeHash(theme);
       await this.saveSettings();
 
-      if (notify) new Notice('Theme synced successfully');
+      if (notify) new Notice(`${mode.charAt(0).toUpperCase() + mode.slice(1)} theme synced`);
     } catch (e) {
       console.error('[NoteShare] Failed to sync theme:', e);
       if (notify) new Notice(`Failed to sync theme: ${e instanceof Error ? e.message : 'Unknown error'}`);

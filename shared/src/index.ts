@@ -8,6 +8,7 @@ export { generateNoteHash } from './hash';
 // Types
 export type {
   ThemeSettings,
+  DualThemeSettings,
   LinkedNote,
   ShareRequest,
   ShareResponse,

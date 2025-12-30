@@ -10,6 +10,14 @@ export interface ThemeSettings {
   interactiveAccent: string;
   codeBackground: string;
   fontSize: number;
+}
+
+/**
+ * Dual theme storage - supports light and dark modes
+ */
+export interface DualThemeSettings {
+  light?: ThemeSettings;
+  dark?: ThemeSettings;
   updatedAt?: string; // Set by worker when storing
 }
 
@@ -47,4 +55,5 @@ export interface ShareResponse {
 export interface ThemeSyncRequest {
   vault: string;
   theme: ThemeSettings;
+  mode: 'light' | 'dark';
 }

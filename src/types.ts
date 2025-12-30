@@ -1,6 +1,7 @@
 // Re-export shared types
 export type {
   ThemeSettings,
+  DualThemeSettings,
   LinkedNote,
   ShareRequest,
   ThemeSyncRequest,

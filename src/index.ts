@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { slugify, generateNoteHash } from '@obsidian-note-share/shared';
-import { Env, ShareRequest, StoredNote, NoteIndex, ThemeSyncRequest, ThemeSettings } from './types';
+import { Env, ShareRequest, StoredNote, NoteIndex, ThemeSyncRequest, DualThemeSettings } from './types';
 import { renderNote } from './render';
 
 // Cache duration for images (1 year in seconds)
@@ -42,21 +42,27 @@ app.get('/api/status', async (c) => {
   }
 });
 
-// Sync theme for a vault
+// Sync theme for a vault (supports light/dark modes)
 app.put('/api/theme', async (c) => {
   try {
     const body = await c.req.json<ThemeSyncRequest>();
 
-    if (!body.vault || !body.theme) {
-      return c.json({ error: 'Missing vault or theme' }, 400);
+    if (!body.vault || !body.theme || !body.mode) {
+      return c.json({ error: 'Missing vault, theme, or mode' }, 400);
     }
 
-    const theme: ThemeSettings = {
-      ...body.theme,
-      updatedAt: new Date().toISOString(),
-    };
+    // Read existing dual theme (if any)
+    let dualTheme: DualThemeSettings = {};
+    const existing = await c.env.NOTES.get(`${body.vault}/theme.json`);
+    if (existing) {
+      dualTheme = await existing.json();
+    }
 
-    await c.env.NOTES.put(`${body.vault}/theme.json`, JSON.stringify(theme));
+    // Merge incoming theme into the correct slot
+    dualTheme[body.mode] = body.theme;
+    dualTheme.updatedAt = new Date().toISOString();
+
+    await c.env.NOTES.put(`${body.vault}/theme.json`, JSON.stringify(dualTheme));
 
     return c.json({ success: true });
   } catch (e) {
@@ -274,8 +280,8 @@ app.get('/g/:vault/:titleSlug/:hash', async (c) => {
       return c.html(render404(), 404);
     }
 
-    // Get theme from the note's vault
-    let theme: ThemeSettings | undefined;
+    // Get dual theme from the note's vault
+    let theme: DualThemeSettings | undefined;
     const themeObj = await c.env.NOTES.get(`${vault}/theme.json`);
     if (themeObj) {
       theme = await themeObj.json();

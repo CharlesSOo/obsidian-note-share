@@ -1,13 +1,13 @@
 import { Marked } from 'marked';
-import { StoredNote, ThemeSettings } from './types';
+import { StoredNote, ThemeSettings, DualThemeSettings } from './types';
 
 const marked = new Marked({
   gfm: true,
   breaks: true,
 });
 
-// Default theme (dark) if none provided
-const DEFAULT_THEME: ThemeSettings = {
+// Default themes
+const DEFAULT_DARK: ThemeSettings = {
   backgroundPrimary: '#1e1e1e',
   backgroundSecondary: '#262626',
   textNormal: '#dcddde',
@@ -18,8 +18,21 @@ const DEFAULT_THEME: ThemeSettings = {
   fontSize: 16,
 };
 
-export function renderNote(note: StoredNote, theme: ThemeSettings | undefined, baseUrl: string): string {
-  const t = theme || DEFAULT_THEME;
+const DEFAULT_LIGHT: ThemeSettings = {
+  backgroundPrimary: '#ffffff',
+  backgroundSecondary: '#f5f5f5',
+  textNormal: '#1e1e1e',
+  textMuted: '#666666',
+  textAccent: '#7c3aed',
+  interactiveAccent: '#7c3aed',
+  codeBackground: '#f0f0f0',
+  fontSize: 16,
+};
+
+export function renderNote(note: StoredNote, theme: DualThemeSettings | undefined, baseUrl: string): string {
+  // Get light and dark themes with fallbacks
+  const dark = theme?.dark || DEFAULT_DARK;
+  const light = theme?.light || DEFAULT_LIGHT;
 
   // Pre-process Obsidian-specific syntax
   let content = note.content;
@@ -30,7 +43,7 @@ export function renderNote(note: StoredNote, theme: ThemeSettings | undefined, b
   content = processInternalLinks(content, baseUrl, note.linkedNotes);
 
   const html = marked.parse(content) as string;
-  const styles = generateStyles(t);
+  const styles = generateStyles(dark, light);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -134,12 +147,8 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function generateStyles(t: ThemeSettings): string {
-  // Determine if theme is dark based on background color
-  const isDark = isColorDark(t.backgroundPrimary);
-
+function generateThemeVars(t: ThemeSettings, isDark: boolean): string {
   return `
-    :root {
       --background-primary: ${t.backgroundPrimary};
       --background-secondary: ${t.backgroundSecondary};
       --text-normal: ${t.textNormal};
@@ -151,10 +160,29 @@ function generateStyles(t: ThemeSettings): string {
       --text-highlight-bg: ${isDark ? 'rgba(255, 208, 0, 0.4)' : 'rgba(255, 208, 0, 0.5)'};
       --tag-background: ${isDark ? 'rgba(124, 58, 237, 0.2)' : 'rgba(124, 58, 237, 0.1)'};
       --tag-color: ${t.textAccent};
+      --font-text-size: ${t.fontSize}px;`;
+}
+
+function generateStyles(dark: ThemeSettings, light: ThemeSettings): string {
+  return `
+    :root {
       --font-text: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       --font-monospace: 'SF Mono', 'Fira Code', 'Monaco', 'Menlo', monospace;
-      --font-text-size: ${t.fontSize}px;
       --line-height: 1.6;
+      /* Default to dark theme */
+      ${generateThemeVars(dark, true)}
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        ${generateThemeVars(light, false)}
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        ${generateThemeVars(dark, true)}
+      }
     }
 
     * { box-sizing: border-box; }
@@ -338,19 +366,4 @@ function generateStyles(t: ThemeSettings): string {
       }
     }
   `;
-}
-
-// Helper to detect if a color is dark
-function isColorDark(color: string): boolean {
-  // Parse hex color
-  const hex = color.replace('#', '');
-  if (hex.length !== 6) return true; // default to dark
-
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
-
-  // Calculate luminance
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.5;
 }
