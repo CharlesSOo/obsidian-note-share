@@ -7,6 +7,24 @@ import { renderNote } from './render';
 // Cache duration for images (1 year in seconds)
 const IMAGE_CACHE_MAX_AGE = 31536000;
 
+// In-memory theme cache with TTL
+const themeCache = new Map<string, { theme: DualThemeSettings; expires: number }>();
+const THEME_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getTheme(env: Env, vault: string): Promise<DualThemeSettings | undefined> {
+  const cached = themeCache.get(vault);
+  if (cached && cached.expires > Date.now()) {
+    return cached.theme;
+  }
+
+  const themeObj = await env.NOTES.get(`${vault}/theme.json`);
+  if (!themeObj) return undefined;
+
+  const theme = await themeObj.json() as DualThemeSettings;
+  themeCache.set(vault, { theme, expires: Date.now() + THEME_CACHE_TTL });
+  return theme;
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // Enable CORS for plugin requests
@@ -64,6 +82,9 @@ app.put('/api/theme', async (c) => {
 
     await c.env.NOTES.put(`${body.vault}/theme.json`, JSON.stringify(dualTheme));
 
+    // Invalidate theme cache
+    themeCache.delete(body.vault);
+
     return c.json({ success: true });
   } catch (e) {
     console.error('Theme sync error:', e);
@@ -84,46 +105,51 @@ app.post('/api/share', async (c) => {
     const hash = await generateNoteHash(body.vault, body.title);
     const linkedNotes: { titleSlug: string; hash: string }[] = [];
 
-    // Store linked notes first
+    // Store linked notes in parallel for better performance
     if (body.linkedNotes && body.linkedNotes.length > 0) {
-      for (const linked of body.linkedNotes) {
-        const linkedTitleSlug = slugify(linked.title);
-        const linkedHash = await generateNoteHash(body.vault, linked.title);
+      // First, compute all hashes and fetch existing notes in parallel
+      const linkedNotesData = await Promise.all(
+        body.linkedNotes.map(async (linked) => {
+          const linkedTitleSlug = slugify(linked.title);
+          const linkedHash = await generateNoteHash(body.vault, linked.title);
+          const existingObj = await c.env.NOTES.get(`notes/${linkedTitleSlug}-${linkedHash}.json`);
+          const existingNote = existingObj ? await existingObj.json() as StoredNote : null;
+          return { linked, linkedTitleSlug, linkedHash, existingNote };
+        })
+      );
 
-        // Check if linked note already exists (preserve createdAt)
-        let linkedCreatedAt = new Date().toISOString();
-        const existingLinked = await c.env.NOTES.get(`notes/${linkedTitleSlug}-${linkedHash}.json`);
-        if (existingLinked) {
-          const existing: StoredNote = await existingLinked.json();
-          linkedCreatedAt = existing.createdAt;
-        }
+      // Then store all linked notes and update indexes in parallel
+      await Promise.all(
+        linkedNotesData.map(async ({ linked, linkedTitleSlug, linkedHash, existingNote }) => {
+          const linkedCreatedAt = existingNote?.createdAt || new Date().toISOString();
 
-        const linkedNote: StoredNote = {
-          vault: body.vault,
-          titleSlug: linkedTitleSlug,
-          hash: linkedHash,
-          title: linked.title,
-          content: linked.content,
-          createdAt: linkedCreatedAt,
-          updatedAt: new Date().toISOString(),
-          linkedNotes: [],
-        };
+          const linkedNote: StoredNote = {
+            vault: body.vault,
+            titleSlug: linkedTitleSlug,
+            hash: linkedHash,
+            title: linked.title,
+            content: linked.content,
+            createdAt: linkedCreatedAt,
+            updatedAt: new Date().toISOString(),
+            linkedNotes: [],
+          };
 
-        await c.env.NOTES.put(
-          `notes/${linkedTitleSlug}-${linkedHash}.json`,
-          JSON.stringify(linkedNote)
-        );
+          await c.env.NOTES.put(
+            `notes/${linkedTitleSlug}-${linkedHash}.json`,
+            JSON.stringify(linkedNote)
+          );
 
-        linkedNotes.push({ titleSlug: linkedTitleSlug, hash: linkedHash });
+          linkedNotes.push({ titleSlug: linkedTitleSlug, hash: linkedHash });
 
-        // Add linked note to index
-        await addToIndex(c.env.NOTES, body.vault, {
-          titleSlug: linkedTitleSlug,
-          hash: linkedHash,
-          title: linked.title,
-          createdAt: linkedNote.createdAt,
-        });
-      }
+          // Add linked note to index
+          await addToIndex(c.env.NOTES, body.vault, {
+            titleSlug: linkedTitleSlug,
+            hash: linkedHash,
+            title: linked.title,
+            createdAt: linkedNote.createdAt,
+          });
+        })
+      );
     }
 
     // Check if main note already exists (preserve createdAt)
@@ -280,17 +306,19 @@ app.get('/g/:vault/:titleSlug/:hash', async (c) => {
       return c.html(render404(), 404);
     }
 
-    // Get dual theme from the note's vault
-    let theme: DualThemeSettings | undefined;
-    const themeObj = await c.env.NOTES.get(`${vault}/theme.json`);
-    if (themeObj) {
-      theme = await themeObj.json();
-    }
+    // Get dual theme from cache or R2
+    const theme = await getTheme(c.env, vault);
 
     const url = new URL(c.req.url);
     const baseUrl = `${url.protocol}//${url.host}/g/${vault}`;
 
-    return c.html(renderNote(note, theme, baseUrl));
+    // Return with aggressive caching - notes are immutable by hash
+    return new Response(renderNote(note, theme, baseUrl), {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400, immutable',
+      },
+    });
   } catch (e) {
     console.error('View error:', e);
     return c.html(render404(), 500);
@@ -405,17 +433,13 @@ async function cleanupExpiredNotes(env: Env): Promise<number> {
       expiryDate.setDate(expiryDate.getDate() + note.retentionDays);
 
       if (now > expiryDate) {
-        // Delete note
-        await env.NOTES.delete(object.key);
-
-        // Delete associated images
+        // Delete note and associated images in parallel
         const imagesList = await env.NOTES.list({ prefix: `images/${note.hash}/` });
-        for (const img of imagesList.objects) {
-          await env.NOTES.delete(img.key);
-        }
-
-        // Remove from vault index
-        await removeFromIndex(env.NOTES, note.vault, note.titleSlug, note.hash);
+        await Promise.all([
+          env.NOTES.delete(object.key),
+          ...imagesList.objects.map(img => env.NOTES.delete(img.key)),
+          removeFromIndex(env.NOTES, note.vault, note.titleSlug, note.hash),
+        ]);
 
         console.log(`Deleted expired note: ${note.title} (${note.hash})`);
         deleted++;

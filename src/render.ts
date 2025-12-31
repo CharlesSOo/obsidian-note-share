@@ -6,6 +6,14 @@ const marked = new Marked({
   breaks: true,
 });
 
+// Pre-compiled regex patterns for better performance
+const CALLOUT_REGEX = /^> \[!(\w+)\]([+-]?)[ ]*(.*)?$\n((?:^>.*$\n?)*)/gm;
+const HIGHLIGHT_REGEX = /==([^=]+)==/g;
+const TAG_REGEX = /(?<!\S)#([a-zA-Z][a-zA-Z0-9_/-]*)/g;
+const CHECKBOX_CHECKED_REGEX = /^(\s*)- \[x\]/gm;
+const CHECKBOX_UNCHECKED_REGEX = /^(\s*)- \[ \]/gm;
+const INTERNAL_LINK_REGEX = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+
 // Default themes
 const DEFAULT_DARK: ThemeSettings = {
   backgroundPrimary: '#1e1e1e',
@@ -42,32 +50,81 @@ export function renderNote(note: StoredNote, theme: DualThemeSettings | undefine
   content = processCheckboxes(content);
   content = processInternalLinks(content, baseUrl, note.linkedNotes);
 
-  const html = marked.parse(content) as string;
+  // Parse markdown and add lazy loading to images
+  const html = (marked.parse(content) as string)
+    .replace(/<img /g, '<img loading="lazy" ');
+
   const styles = generateStyles(dark, light);
+
+  // Generate description from content (first 160 chars, strip markdown)
+  const description = note.content
+    .replace(/[#*_`\[\]()!]/g, '')
+    .replace(/\n+/g, ' ')
+    .trim()
+    .slice(0, 160);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="${escapeHtml(description)}">
+  <meta property="og:title" content="${escapeHtml(note.title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:type" content="article">
   <title>${escapeHtml(note.title)}</title>
   <style>${styles}</style>
 </head>
 <body>
+  <button id="theme-toggle" aria-label="Toggle theme">
+    <span class="sun">☀️</span><span class="moon">🌙</span>
+  </button>
   <div class="markdown-preview-view markdown-rendered">
     <div class="markdown-preview-sizer markdown-preview-section">
       <div class="inline-title">${escapeHtml(note.title)}</div>
       ${html}
     </div>
   </div>
+  <script>
+    // Theme toggle - cycles: system -> opposite -> system
+    const toggle = document.getElementById('theme-toggle');
+    const root = document.documentElement;
+    toggle.onclick = () => {
+      const hasLight = root.classList.contains('force-light');
+      const hasDark = root.classList.contains('force-dark');
+
+      // Remove any existing override
+      root.classList.remove('force-light', 'force-dark');
+
+      // If no override was set, apply opposite of system preference
+      if (!hasLight && !hasDark) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        root.classList.add(prefersDark ? 'force-light' : 'force-dark');
+      }
+      // Otherwise, we just removed the override (back to system)
+    };
+
+    // Interactive callout folding
+    document.querySelectorAll('.callout[data-callout-fold]').forEach(c => {
+      const title = c.querySelector('.callout-title');
+      const content = c.querySelector('.callout-content');
+      if (title && content) {
+        title.style.cursor = 'pointer';
+        title.onclick = () => {
+          content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        };
+      }
+    });
+  </script>
 </body>
 </html>`;
 }
 
 function processCallouts(content: string): string {
-  const calloutRegex = /^> \[!(\w+)\]([+-]?)[ ]*(.*)?$\n((?:^>.*$\n?)*)/gm;
+  // Reset regex lastIndex for global patterns
+  CALLOUT_REGEX.lastIndex = 0;
 
-  return content.replace(calloutRegex, (match, type, fold, title, body) => {
+  return content.replace(CALLOUT_REGEX, (match, type, fold, title, body) => {
     const calloutType = type.toLowerCase();
     const calloutTitle = title?.trim() || type.charAt(0).toUpperCase() + type.slice(1);
     const calloutBody = body
@@ -105,16 +162,20 @@ function getCalloutIcon(type: string): string {
 }
 
 function processHighlights(content: string): string {
-  return content.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+  HIGHLIGHT_REGEX.lastIndex = 0;
+  return content.replace(HIGHLIGHT_REGEX, '<mark>$1</mark>');
 }
 
 function processTags(content: string): string {
-  return content.replace(/(?<!\S)#([a-zA-Z][a-zA-Z0-9_/-]*)/g, '<span class="tag">#$1</span>');
+  TAG_REGEX.lastIndex = 0;
+  return content.replace(TAG_REGEX, '<span class="tag">#$1</span>');
 }
 
 function processCheckboxes(content: string): string {
-  content = content.replace(/^(\s*)- \[x\]/gm, '$1- <input type="checkbox" checked disabled>');
-  content = content.replace(/^(\s*)- \[ \]/gm, '$1- <input type="checkbox" disabled>');
+  CHECKBOX_CHECKED_REGEX.lastIndex = 0;
+  CHECKBOX_UNCHECKED_REGEX.lastIndex = 0;
+  content = content.replace(CHECKBOX_CHECKED_REGEX, '$1- <input type="checkbox" checked disabled>');
+  content = content.replace(CHECKBOX_UNCHECKED_REGEX, '$1- <input type="checkbox" disabled>');
   return content;
 }
 
@@ -123,7 +184,8 @@ function processInternalLinks(
   baseUrl: string,
   linkedNotes: { titleSlug: string; hash: string }[]
 ): string {
-  return content.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, link, display) => {
+  INTERNAL_LINK_REGEX.lastIndex = 0;
+  return content.replace(INTERNAL_LINK_REGEX, (match, link, display) => {
     const slug = link.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const text = display || link;
 
@@ -356,6 +418,42 @@ function generateStyles(dark: ThemeSettings, light: ThemeSettings): string {
     .callout[data-callout="abstract"], .callout[data-callout="summary"], .callout[data-callout="tldr"] { border-left-color: #00b8d4; }
     .callout[data-callout="todo"] { border-left-color: #448aff; }
     .callout[data-callout="failure"], .callout[data-callout="fail"], .callout[data-callout="missing"] { border-left-color: #ff5252; }
+
+    /* Theme toggle button */
+    #theme-toggle {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      background: var(--background-secondary);
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 16px;
+      z-index: 100;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    #theme-toggle:hover { opacity: 1; }
+    #theme-toggle .sun { display: none; }
+    #theme-toggle .moon { display: inline; }
+    @media (prefers-color-scheme: light) {
+      #theme-toggle .sun { display: inline; }
+      #theme-toggle .moon { display: none; }
+    }
+
+    /* Manual theme override classes */
+    html.force-light {
+      ${generateThemeVars(light, false)}
+    }
+    html.force-light #theme-toggle .sun { display: inline; }
+    html.force-light #theme-toggle .moon { display: none; }
+
+    html.force-dark {
+      ${generateThemeVars(dark, true)}
+    }
+    html.force-dark #theme-toggle .sun { display: none; }
+    html.force-dark #theme-toggle .moon { display: inline; }
 
     @media (max-width: 600px) {
       .markdown-preview-view {

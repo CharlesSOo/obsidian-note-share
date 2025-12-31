@@ -17,6 +17,9 @@ export const WEBP_QUALITY = 0.85;
 // Max concurrent uploads/operations
 export const MAX_CONCURRENT = 20;
 
+// WebP conversion cache: path -> { mtime, webpData }
+const imageCache = new Map<string, { mtime: number; webpData: ArrayBuffer }>();
+
 /**
  * Result of an image upload operation
  */
@@ -105,6 +108,7 @@ export async function convertToWebP(imageData: ArrayBuffer): Promise<ArrayBuffer
 
 /**
  * Upload a single image file and return its URL
+ * Uses caching to avoid re-converting unchanged images to WebP
  */
 export async function uploadImageFile(
   app: App,
@@ -114,22 +118,37 @@ export async function uploadImageFile(
 ): Promise<string | undefined> {
   try {
     console.log(`[NoteShare] Uploading image: ${imageFile.path}`);
-    const imageData = await app.vault.readBinary(imageFile);
     const ext = imageFile.extension.toLowerCase();
 
     // Skip WebP conversion for SVGs (already optimized vectors)
     if (ext === 'svg') {
+      const imageData = await app.vault.readBinary(imageFile);
       const result = await api.uploadImage(noteHash, imageFile.name, imageData, 'image/svg+xml');
       console.log(`[NoteShare] SVG uploaded: ${result.url}`);
       return result.url;
     }
 
-    // Convert to WebP for all other image formats
-    const webpData = await convertToWebP(imageData);
-    const webpFilename = imageFile.basename + '.webp';
+    // Check cache for WebP conversion
+    const fileStat = await app.vault.adapter.stat(imageFile.path);
+    const mtime = fileStat?.mtime || 0;
+    const cached = imageCache.get(imageFile.path);
 
+    let webpData: ArrayBuffer;
+    if (cached && cached.mtime === mtime) {
+      // Use cached WebP data
+      console.log(`[NoteShare] Using cached WebP: ${imageFile.path}`);
+      webpData = cached.webpData;
+    } else {
+      // Convert and cache
+      const imageData = await app.vault.readBinary(imageFile);
+      webpData = await convertToWebP(imageData);
+      imageCache.set(imageFile.path, { mtime, webpData });
+      console.log(`[NoteShare] Converted and cached WebP: ${imageFile.path}`);
+    }
+
+    const webpFilename = imageFile.basename + '.webp';
     const result = await api.uploadImage(noteHash, webpFilename, webpData, 'image/webp');
-    console.log(`[NoteShare] Image converted to WebP and uploaded: ${result.url}`);
+    console.log(`[NoteShare] Image uploaded: ${result.url}`);
     return result.url;
   } catch (e) {
     console.error(`[NoteShare] Failed to upload image ${imageFile.path}:`, e);

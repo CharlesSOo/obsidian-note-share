@@ -10,13 +10,18 @@ export default class NoteSharePlugin extends Plugin {
   settings: NoteShareSettings;
   api: NoteShareAPI;
 
-  // Auto-sync tracking
-  private syncIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
-  private syncTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  // Track last API config for smart recreation
+  private lastApiUrl: string = '';
+  private lastApiKey: string = '';
+
+  // Auto-sync tracking - simple debounce pattern
+  private pendingSyncs: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   async onload() {
     await this.loadSettings();
     this.api = new NoteShareAPI(this.settings);
+    this.lastApiUrl = this.settings.serverUrl;
+    this.lastApiKey = this.settings.apiKey;
 
     // Check and sync theme if changed (runs after workspace is ready)
     this.app.workspace.onLayoutReady(() => {
@@ -124,38 +129,21 @@ export default class NoteSharePlugin extends Plugin {
 
   handleFileModify(file: TFile) {
     if (!this.settings.autoSync) return;
+    if (!this.settings.sharedNotes?.[file.path]) return;
 
-    const entry = this.settings.sharedNotes?.[file.path];
-    if (!entry) return;
+    // Clear existing pending sync for this file
+    const existing = this.pendingSyncs.get(file.path);
+    if (existing) clearTimeout(existing);
 
-    console.log(`[NoteShare] Scheduling sync: ${file.path}`);
+    // Schedule new debounced sync
     const delay = (this.settings.autoSyncDelay || 1) * 60 * 1000;
-
-    // Start interval if not already running (syncs every 2 min)
-    if (!this.syncIntervals.has(file.path)) {
-      const interval = setInterval(() => this.autoSyncNote(file), delay);
-      this.syncIntervals.set(file.path, interval);
-
-      // Schedule first sync after delay
-      setTimeout(() => this.autoSyncNote(file), delay);
-    }
-
-    // Reset "idle" timeout - if no edits for delay period, stop interval and final sync
-    const existingTimeout = this.syncTimeouts.get(file.path);
-    if (existingTimeout) clearTimeout(existingTimeout);
-
     const timeout = setTimeout(() => {
-      // Stop interval
-      const interval = this.syncIntervals.get(file.path);
-      if (interval) clearInterval(interval);
-      this.syncIntervals.delete(file.path);
-      this.syncTimeouts.delete(file.path);
-
-      // Final sync
+      this.pendingSyncs.delete(file.path);
       this.autoSyncNote(file);
     }, delay);
 
-    this.syncTimeouts.set(file.path, timeout);
+    this.pendingSyncs.set(file.path, timeout);
+    console.log(`[NoteShare] Scheduled sync in ${delay / 1000}s: ${file.path}`);
   }
 
   async autoSyncNote(file: TFile) {
@@ -396,15 +384,11 @@ export default class NoteSharePlugin extends Plugin {
   }
 
   onunload() {
-    // Clear all sync intervals and timeouts
-    for (const interval of this.syncIntervals.values()) {
-      clearInterval(interval);
-    }
-    for (const timeout of this.syncTimeouts.values()) {
+    // Clear all pending sync timeouts
+    for (const timeout of this.pendingSyncs.values()) {
       clearTimeout(timeout);
     }
-    this.syncIntervals.clear();
-    this.syncTimeouts.clear();
+    this.pendingSyncs.clear();
   }
 
   async loadSettings() {
@@ -413,6 +397,12 @@ export default class NoteSharePlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    this.api = new NoteShareAPI(this.settings);
+
+    // Only recreate API client if URL or API key changed
+    if (this.settings.serverUrl !== this.lastApiUrl || this.settings.apiKey !== this.lastApiKey) {
+      this.api = new NoteShareAPI(this.settings);
+      this.lastApiUrl = this.settings.serverUrl;
+      this.lastApiKey = this.settings.apiKey;
+    }
   }
 }

@@ -21,6 +21,9 @@ async function handleResponseError(response: Response, context: string): Promise
 }
 
 export class NoteShareAPI {
+  // Track in-flight share requests to prevent duplicates
+  private inFlightShares = new Map<string, Promise<ShareResponse>>();
+
   constructor(private settings: NoteShareSettings) {}
 
   private get headers() {
@@ -31,6 +34,26 @@ export class NoteShareAPI {
   }
 
   async shareNote(request: ShareRequest): Promise<ShareResponse> {
+    // Create unique key for this share request
+    const key = `${request.vault}:${request.title}`;
+
+    // Return existing in-flight request if one exists
+    const existing = this.inFlightShares.get(key);
+    if (existing) {
+      console.log(`[NoteShare] Deduplicating share request: ${key}`);
+      return existing;
+    }
+
+    // Create new request and track it
+    const promise = this.doShareNote(request).finally(() => {
+      this.inFlightShares.delete(key);
+    });
+
+    this.inFlightShares.set(key, promise);
+    return promise;
+  }
+
+  private async doShareNote(request: ShareRequest): Promise<ShareResponse> {
     const response = await fetch(`${this.settings.serverUrl}/api/share`, {
       method: 'POST',
       headers: this.headers,
