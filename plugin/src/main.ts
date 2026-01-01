@@ -43,13 +43,13 @@ export default class NoteSharePlugin extends Plugin {
 
         menu.addItem((item) => {
           item
-            .setTitle('Share Note')
+            .setTitle('NoteShare: Create URL')
             .setIcon('share')
             .onClick(() => this.shareNote(file));
         });
         menu.addItem((item) => {
           item
-            .setTitle('Share Note + Linked Notes')
+            .setTitle('NoteShare: Create URL + Linked Notes')
             .setIcon('share-2')
             .onClick(() => this.shareNote(file, true));
         });
@@ -277,7 +277,7 @@ export default class NoteSharePlugin extends Plugin {
 
       // Copy to clipboard FIRST - instant feedback
       await navigator.clipboard.writeText(url);
-      new Notice(`Link copied! Uploading...`);
+      new Notice(`✓ URL copied`);
 
       // Create shared semaphore for all parallel operations
       const semaphore = new Semaphore();
@@ -325,7 +325,7 @@ export default class NoteSharePlugin extends Plugin {
       await this.saveSettings();
       console.log(`[NoteShare] Registered for auto-sync: ${file.path}`);
 
-      new Notice(`Uploaded: ${url}`);
+      new Notice(`✓ Note uploaded`);
 
       // Refresh sidebar if open
       const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_SHARED_NOTES);
