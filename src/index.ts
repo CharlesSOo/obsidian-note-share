@@ -176,8 +176,8 @@ app.post('/api/share', async (c) => {
     // Store note globally (vault info is inside the JSON)
     await c.env.NOTES.put(`notes/${titleSlug}-${hash}.json`, JSON.stringify(note));
 
-    // Add main note to batch index
-    notesToIndex.push({ titleSlug, hash, title: body.title, createdAt });
+    // Add main note to batch index (unshift to put it first in the list)
+    notesToIndex.unshift({ titleSlug, hash, title: body.title, createdAt });
 
     // Single batch index update for all notes
     await batchAddToIndex(c.env.NOTES, body.vault, notesToIndex);
