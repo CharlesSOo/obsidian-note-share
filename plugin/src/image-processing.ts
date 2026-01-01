@@ -181,74 +181,56 @@ export async function processImages(
   // Match markdown-style images: ![alt](path.png)
   const markdownMatches = [...content.matchAll(MARKDOWN_IMAGE_REGEX)];
 
-  // Build upload tasks for Obsidian-style embeds
-  type MaybeUploadResult = UploadResult | undefined;
-  const obsidianTasks: Promise<MaybeUploadResult>[] = [];
+  // Helper to create upload task
+  const createUploadTask = (
+    imageFile: TFile,
+    original: string,
+    alt: string
+  ): Promise<UploadResult | undefined> =>
+    sem.run(async () => {
+      const imageUrl = await uploadImageFile(app, api, imageFile, noteHash);
+      return imageUrl ? { original, replacement: `![${alt}](${imageUrl})` } : undefined;
+    });
 
+  // Build upload tasks
+  const tasks: Promise<UploadResult | undefined>[] = [];
+
+  // Process Obsidian-style embeds
   for (const match of obsidianMatches) {
-    const embedPath = match[1];
-    const alias = match[2];
-    const originalText = match[0];
-
+    const [originalText, embedPath, alias] = match;
     const resolvedFile = app.metadataCache.getFirstLinkpathDest(embedPath, file.path);
 
-    if (!resolvedFile || !(resolvedFile instanceof TFile)) {
-      console.log(`[NoteShare] Could not resolve: ${embedPath}`);
+    if (!(resolvedFile instanceof TFile) || !IMAGE_EXTENSIONS.includes(resolvedFile.extension.toLowerCase())) {
       continue;
     }
-
-    if (!IMAGE_EXTENSIONS.includes(resolvedFile.extension.toLowerCase())) {
-      console.log(`[NoteShare] Not an image: ${embedPath}`);
-      continue;
-    }
-
-    // Queue upload task
-    obsidianTasks.push(
-      sem.run(async () => {
-        console.log(`[NoteShare] Uploading: ${resolvedFile.path}`);
-        const imageUrl = await uploadImageFile(app, api, resolvedFile, noteHash);
-        if (imageUrl) {
-          const altText = alias || resolvedFile.basename;
-          return { original: originalText, replacement: `![${altText}](${imageUrl})` };
-        }
-        return undefined;
-      })
-    );
+    tasks.push(createUploadTask(resolvedFile, originalText, alias || resolvedFile.basename));
   }
 
-  // Build upload tasks for markdown-style images
-  const markdownTasks: Promise<MaybeUploadResult>[] = [];
-
+  // Process markdown-style images
   for (const match of markdownMatches) {
-    const fullMatch = match[0];
-    const alt = match[1];
-    const imagePath = match[2];
-
+    const [fullMatch, alt, imagePath] = match;
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) continue;
 
     const imageFile = app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
-
     if (imageFile instanceof TFile) {
-      markdownTasks.push(
-        sem.run(async () => {
-          const imageUrl = await uploadImageFile(app, api, imageFile, noteHash);
-          if (imageUrl) {
-            return { original: fullMatch, replacement: `![${alt}](${imageUrl})` };
-          }
-          return undefined;
-        })
-      );
+      tasks.push(createUploadTask(imageFile, fullMatch, alt));
     }
   }
 
-  // Run all uploads in parallel (semaphore limits concurrency)
-  const allResults = await Promise.all([...obsidianTasks, ...markdownTasks]);
+  // Run all uploads in parallel and build replacement map
+  const results = await Promise.all(tasks);
+  const replacements = new Map<string, string>();
+  for (const r of results) {
+    if (r) replacements.set(r.original, r.replacement);
+  }
 
-  // Apply all replacements
-  for (const result of allResults) {
-    if (result) {
-      processedContent = processedContent.replaceAll(result.original, result.replacement);
-    }
+  // Single-pass replacement using regex
+  if (replacements.size > 0) {
+    const pattern = new RegExp(
+      [...replacements.keys()].map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+      'g'
+    );
+    processedContent = processedContent.replace(pattern, m => replacements.get(m) || m);
   }
 
   // Clean up any remaining image embeds that couldn't be processed

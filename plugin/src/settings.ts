@@ -108,18 +108,6 @@ export class NoteShareSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Include linked notes')
-      .setDesc('Share notes linked via [[wikilinks]] together')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.includeLinkedNotes)
-          .onChange(async (value) => {
-            this.plugin.settings.includeLinkedNotes = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
       .setName('Auto-sync edits')
       .setDesc('Re-upload shared notes when you edit them')
       .addToggle((toggle) =>

@@ -54,12 +54,15 @@ export function renderNote(note: StoredNote, theme: DualThemeSettings | undefine
   const html = (marked.parse(content) as string)
     .replace(/<img /g, '<img loading="lazy" ');
 
-  const styles = generateStyles(dark, light);
+  // Pre-compute theme vars (used multiple times in CSS)
+  const darkVars = generateThemeVars(dark, true);
+  const lightVars = generateThemeVars(light, false);
+  const styles = generateStylesWithVars(darkVars, lightVars);
 
-  // Generate description from content (first 160 chars, strip markdown)
-  const description = note.content
-    .replace(/[#*_`\[\]()!]/g, '')
-    .replace(/\n+/g, ' ')
+  // Generate description from processed content (strip HTML tags and normalize whitespace)
+  const description = html
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 160);
 
@@ -184,18 +187,18 @@ function processInternalLinks(
   baseUrl: string,
   linkedNotes: { titleSlug: string; hash: string }[]
 ): string {
+  // Build O(1) lookup map from slugs to hashes
+  const linkMap = new Map(linkedNotes.map(n => [n.titleSlug, n.hash]));
+
   INTERNAL_LINK_REGEX.lastIndex = 0;
   return content.replace(INTERNAL_LINK_REGEX, (match, link, display) => {
     const slug = link.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const text = display || link;
+    const hash = linkMap.get(slug);
 
-    // Find the linked note's hash
-    const linkedNote = linkedNotes.find(n => n.titleSlug === slug);
-    if (linkedNote) {
-      // baseUrl already includes vault: /g/{vault}
-      return `<a href="${baseUrl}/${slug}/${linkedNote.hash}" class="internal-link">${escapeHtml(text)}</a>`;
+    if (hash) {
+      return `<a href="${baseUrl}/${slug}/${hash}" class="internal-link">${escapeHtml(text)}</a>`;
     }
-    // If not found in linkedNotes, show as unresolved
     return `<span class="internal-link unresolved">${escapeHtml(text)}</span>`;
   });
 }
@@ -225,25 +228,25 @@ function generateThemeVars(t: ThemeSettings, isDark: boolean): string {
       --font-text-size: ${t.fontSize}px;`;
 }
 
-function generateStyles(dark: ThemeSettings, light: ThemeSettings): string {
+function generateStylesWithVars(darkVars: string, lightVars: string): string {
   return `
     :root {
       --font-text: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       --font-monospace: 'SF Mono', 'Fira Code', 'Monaco', 'Menlo', monospace;
       --line-height: 1.6;
       /* Default to dark theme */
-      ${generateThemeVars(dark, true)}
+      ${darkVars}
     }
 
     @media (prefers-color-scheme: light) {
       :root {
-        ${generateThemeVars(light, false)}
+        ${lightVars}
       }
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        ${generateThemeVars(dark, true)}
+        ${darkVars}
       }
     }
 
@@ -444,13 +447,13 @@ function generateStyles(dark: ThemeSettings, light: ThemeSettings): string {
 
     /* Manual theme override classes */
     html.force-light {
-      ${generateThemeVars(light, false)}
+      ${lightVars}
     }
     html.force-light #theme-toggle .sun { display: inline; }
     html.force-light #theme-toggle .moon { display: none; }
 
     html.force-dark {
-      ${generateThemeVars(dark, true)}
+      ${darkVars}
     }
     html.force-dark #theme-toggle .sun { display: none; }
     html.force-dark #theme-toggle .moon { display: inline; }

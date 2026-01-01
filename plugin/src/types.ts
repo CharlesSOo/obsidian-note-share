@@ -21,7 +21,6 @@ export interface NoteShareSettings {
   serverUrl: string;
   apiKey: string;
   vaultName: string;
-  includeLinkedNotes: boolean;
   autoSync: boolean;
   autoSyncDelay: number; // minutes
   autoDeleteDays: number; // 0 = never, else days until auto-delete
@@ -33,7 +32,6 @@ export const DEFAULT_SETTINGS: NoteShareSettings = {
   serverUrl: '',
   apiKey: '',
   vaultName: '',
-  includeLinkedNotes: false,
   autoSync: true,
   autoSyncDelay: 1,
   autoDeleteDays: 0,

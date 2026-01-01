@@ -104,6 +104,8 @@ app.post('/api/share', async (c) => {
     const titleSlug = slugify(body.title);
     const hash = await generateNoteHash(body.vault, body.title);
     const linkedNotes: { titleSlug: string; hash: string }[] = [];
+    const notesToIndex: { titleSlug: string; hash: string; title: string; createdAt: string }[] = [];
+    const now = new Date().toISOString();
 
     // Store linked notes in parallel for better performance
     if (body.linkedNotes && body.linkedNotes.length > 0) {
@@ -118,10 +120,10 @@ app.post('/api/share', async (c) => {
         })
       );
 
-      // Then store all linked notes and update indexes in parallel
+      // Then store all linked notes in parallel (collect index entries)
       await Promise.all(
         linkedNotesData.map(async ({ linked, linkedTitleSlug, linkedHash, existingNote }) => {
-          const linkedCreatedAt = existingNote?.createdAt || new Date().toISOString();
+          const linkedCreatedAt = existingNote?.createdAt || now;
 
           const linkedNote: StoredNote = {
             vault: body.vault,
@@ -130,7 +132,7 @@ app.post('/api/share', async (c) => {
             title: linked.title,
             content: linked.content,
             createdAt: linkedCreatedAt,
-            updatedAt: new Date().toISOString(),
+            updatedAt: now,
             linkedNotes: [],
           };
 
@@ -140,20 +142,18 @@ app.post('/api/share', async (c) => {
           );
 
           linkedNotes.push({ titleSlug: linkedTitleSlug, hash: linkedHash });
-
-          // Add linked note to index
-          await addToIndex(c.env.NOTES, body.vault, {
+          notesToIndex.push({
             titleSlug: linkedTitleSlug,
             hash: linkedHash,
             title: linked.title,
-            createdAt: linkedNote.createdAt,
+            createdAt: linkedCreatedAt,
           });
         })
       );
     }
 
     // Check if main note already exists (preserve createdAt)
-    let createdAt = new Date().toISOString();
+    let createdAt = now;
     const existingNote = await c.env.NOTES.get(`notes/${titleSlug}-${hash}.json`);
     if (existingNote) {
       const existing: StoredNote = await existingNote.json();
@@ -168,7 +168,7 @@ app.post('/api/share', async (c) => {
       title: body.title,
       content: body.content,
       createdAt,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
       linkedNotes,
       retentionDays: body.retentionDays || 0,
     };
@@ -176,16 +176,13 @@ app.post('/api/share', async (c) => {
     // Store note globally (vault info is inside the JSON)
     await c.env.NOTES.put(`notes/${titleSlug}-${hash}.json`, JSON.stringify(note));
 
-    // Update vault-specific index for listing
-    await addToIndex(c.env.NOTES, body.vault, {
-      titleSlug,
-      hash,
-      title: body.title,
-      createdAt: note.createdAt,
-    });
+    // Add main note to batch index
+    notesToIndex.push({ titleSlug, hash, title: body.title, createdAt });
 
-    const url = new URL(c.req.url);
-    const baseUrl = `${url.protocol}//${url.host}`;
+    // Single batch index update for all notes
+    await batchAddToIndex(c.env.NOTES, body.vault, notesToIndex);
+
+    const baseUrl = `${new URL(c.req.url).origin}`;
 
     return c.json({
       url: `${baseUrl}/g/${body.vault}/${titleSlug}/${hash}`,
@@ -254,8 +251,7 @@ app.post('/api/images/:noteHash', async (c) => {
       httpMetadata: { contentType },
     });
 
-    const url = new URL(c.req.url);
-    const imageUrl = `${url.protocol}//${url.host}/i/${noteHash}/${encodeURIComponent(filename)}`;
+    const imageUrl = `${new URL(c.req.url).origin}/i/${noteHash}/${encodeURIComponent(filename)}`;
 
     return c.json({ url: imageUrl, key });
   } catch (e) {
@@ -309,8 +305,7 @@ app.get('/g/:vault/:titleSlug/:hash', async (c) => {
     // Get dual theme from cache or R2
     const theme = await getTheme(c.env, vault);
 
-    const url = new URL(c.req.url);
-    const baseUrl = `${url.protocol}//${url.host}/g/${vault}`;
+    const baseUrl = `${new URL(c.req.url).origin}/g/${vault}`;
 
     // Return with aggressive caching - notes are immutable by hash
     return new Response(renderNote(note, theme, baseUrl), {
@@ -325,26 +320,26 @@ app.get('/g/:vault/:titleSlug/:hash', async (c) => {
   }
 });
 
-// Helper: Add to note index
-async function addToIndex(
+// Helper: Batch add multiple notes to index (single R2 read/write)
+async function batchAddToIndex(
   bucket: R2Bucket,
   vault: string,
-  note: { titleSlug: string; hash: string; title: string; createdAt: string }
+  notes: { titleSlug: string; hash: string; title: string; createdAt: string }[]
 ): Promise<void> {
-  let index: NoteIndex = { notes: [] };
+  if (notes.length === 0) return;
 
+  let index: NoteIndex = { notes: [] };
   const indexObj = await bucket.get(`${vault}/index.json`);
   if (indexObj) {
     index = await indexObj.json();
   }
 
-  // Remove existing entry if present (for updates)
-  index.notes = index.notes.filter(
-    (n) => !(n.titleSlug === note.titleSlug && n.hash === note.hash)
-  );
+  // Build set of keys to remove (for updates)
+  const keysToRemove = new Set(notes.map(n => `${n.titleSlug}:${n.hash}`));
+  index.notes = index.notes.filter(n => !keysToRemove.has(`${n.titleSlug}:${n.hash}`));
 
-  // Add new entry at the beginning
-  index.notes.unshift(note);
+  // Add all new entries at the beginning
+  index.notes.unshift(...notes);
 
   await bucket.put(`${vault}/index.json`, JSON.stringify(index));
 }

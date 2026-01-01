@@ -41,29 +41,18 @@ export default class NoteSharePlugin extends Plugin {
       this.app.workspace.on('file-menu', (menu, file) => {
         if (!(file instanceof TFile) || file.extension !== 'md') return;
 
-        if (this.settings.includeLinkedNotes) {
-          // Setting enabled: just show one option (links already included)
-          menu.addItem((item) => {
-            item
-              .setTitle('Share Note + Linked Notes')
-              .setIcon('share-2')
-              .onClick(() => this.shareNote(file));
-          });
-        } else {
-          // Setting disabled: show both options
-          menu.addItem((item) => {
-            item
-              .setTitle('Share Note')
-              .setIcon('share')
-              .onClick(() => this.shareNote(file));
-          });
-          menu.addItem((item) => {
-            item
-              .setTitle('Share Note + Linked Notes')
-              .setIcon('share-2')
-              .onClick(() => this.shareNote(file, true));
-          });
-        }
+        menu.addItem((item) => {
+          item
+            .setTitle('Share Note')
+            .setIcon('share')
+            .onClick(() => this.shareNote(file));
+        });
+        menu.addItem((item) => {
+          item
+            .setTitle('Share Note + Linked Notes')
+            .setIcon('share-2')
+            .onClick(() => this.shareNote(file, true));
+        });
       })
     );
 
@@ -300,8 +289,7 @@ export default class NoteSharePlugin extends Plugin {
       const mainImagesPromise = processImages(this.app, this.api, file, content, vault, semaphore);
 
       // Start linked notes processing (queued after main images)
-      const shouldIncludeLinks = includeLinks || this.settings.includeLinkedNotes;
-      const linkedNotesPromise = shouldIncludeLinks
+      const linkedNotesPromise = includeLinks
         ? this.getLinkedNotes(file, semaphore)
         : Promise.resolve([]);
 

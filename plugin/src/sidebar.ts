@@ -205,7 +205,4 @@ export class SharedNotesView extends ItemView {
     deleteBtn.setAttribute('aria-label', 'Delete');
   }
 
-  async onClose(): Promise<void> {
-    // Cleanup
-  }
 }
