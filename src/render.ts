@@ -343,6 +343,16 @@ function generateStylesWithVars(darkVars: string, lightVars: string): string {
     }
     ul ul:has(> li > input[type="checkbox"]) {
       padding-left: 1.5em;
+      position: relative;
+    }
+    ul ul:has(> li > input[type="checkbox"])::before {
+      content: '';
+      position: absolute;
+      left: 0.4em;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--background-modifier-border);
     }
     input[type="checkbox"] {
       margin-right: 0.5em;
