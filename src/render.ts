@@ -335,10 +335,14 @@ function generateStylesWithVars(darkVars: string, lightVars: string): string {
     li { margin: 0.25em 0; }
     li > ul, li > ol { margin: 0.25em 0; }
 
-    li:has(input[type="checkbox"]) {
+    li:has(> input[type="checkbox"]) {
       list-style: none;
-      margin-left: -1.5em;
+    }
+    ul:has(> li > input[type="checkbox"]) {
       padding-left: 0;
+    }
+    ul ul:has(> li > input[type="checkbox"]) {
+      padding-left: 1.5em;
     }
     input[type="checkbox"] {
       margin-right: 0.5em;
