@@ -14,8 +14,6 @@ export default class NoteSharePlugin extends Plugin {
   private lastApiUrl: string = '';
   private lastApiKey: string = '';
 
-  // Auto-sync tracking - simple debounce pattern
-  private pendingSyncs: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   async onload() {
     await this.loadSettings();
@@ -120,19 +118,7 @@ export default class NoteSharePlugin extends Plugin {
     if (!this.settings.autoSync) return;
     if (!this.settings.sharedNotes?.[file.path]) return;
 
-    // Clear existing pending sync for this file
-    const existing = this.pendingSyncs.get(file.path);
-    if (existing) clearTimeout(existing);
-
-    // Schedule new debounced sync
-    const delay = (this.settings.autoSyncDelay || 1) * 60 * 1000;
-    const timeout = setTimeout(() => {
-      this.pendingSyncs.delete(file.path);
-      this.autoSyncNote(file);
-    }, delay);
-
-    this.pendingSyncs.set(file.path, timeout);
-    console.log(`[NoteShare] Scheduled sync in ${delay / 1000}s: ${file.path}`);
+    this.autoSyncNote(file);
   }
 
   async autoSyncNote(file: TFile) {
@@ -371,13 +357,7 @@ export default class NoteSharePlugin extends Plugin {
     return results.filter((n): n is { title: string; content: string } => n !== undefined);
   }
 
-  onunload() {
-    // Clear all pending sync timeouts
-    for (const timeout of this.pendingSyncs.values()) {
-      clearTimeout(timeout);
-    }
-    this.pendingSyncs.clear();
-  }
+  onunload() {}
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());

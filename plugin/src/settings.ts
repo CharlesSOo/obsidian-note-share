@@ -120,20 +120,6 @@ export class NoteShareSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Sync delay (minutes)')
-      .setDesc('Time between syncs while editing (1-30)')
-      .addText((text) =>
-        text
-          .setPlaceholder('1')
-          .setValue(String(this.plugin.settings.autoSyncDelay || 1))
-          .onChange(async (value) => {
-            const num = parseInt(value) || 1;
-            this.plugin.settings.autoSyncDelay = Math.max(1, Math.min(30, num));
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
       .setName('Auto-delete after (days)')
       .setDesc('Delete shared notes after N days (0 = never)')
       .addText((text) =>

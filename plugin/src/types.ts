@@ -22,7 +22,6 @@ export interface NoteShareSettings {
   apiKey: string;
   vaultName: string;
   autoSync: boolean;
-  autoSyncDelay: number; // minutes
   autoDeleteDays: number; // 0 = never, else days until auto-delete
   sharedNotes: Record<string, SharedNoteEntry>; // keyed by filePath
   lastThemeHash?: string; // hash of last synced theme
@@ -33,7 +32,6 @@ export const DEFAULT_SETTINGS: NoteShareSettings = {
   apiKey: '',
   vaultName: '',
   autoSync: true,
-  autoSyncDelay: 1,
   autoDeleteDays: 0,
   sharedNotes: {},
 };

@@ -20,6 +20,60 @@ async function handleResponseError(response: Response, context: string): Promise
   throw new Error(`${context}: ${errorText || response.statusText}`);
 }
 
+/**
+ * Convert network errors to user-friendly messages
+ */
+function getNetworkErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'Unknown error';
+  }
+
+  const msg = error.message.toLowerCase();
+
+  // DNS resolution failure
+  if (msg.includes('err_name_not_resolved') || msg.includes('getaddrinfo') || msg.includes('nodename nor servname')) {
+    return 'Server not found - check the URL in settings';
+  }
+
+  // Connection refused
+  if (msg.includes('econnrefused') || msg.includes('connection refused')) {
+    return 'Connection refused - is the server running?';
+  }
+
+  // Timeout
+  if (msg.includes('timeout') || msg.includes('etimedout')) {
+    return 'Connection timed out - server may be slow or unreachable';
+  }
+
+  // Network offline
+  if (msg.includes('network') || msg.includes('offline') || msg.includes('err_internet_disconnected')) {
+    return 'Network error - check your internet connection';
+  }
+
+  // SSL/TLS errors
+  if (msg.includes('ssl') || msg.includes('cert') || msg.includes('certificate')) {
+    return 'SSL certificate error - check server configuration';
+  }
+
+  // Generic fetch failure
+  if (msg.includes('failed to fetch') || msg.includes('fetch')) {
+    return 'Server not reachable - check the URL in settings';
+  }
+
+  return error.message;
+}
+
+/**
+ * Wrapper for fetch that provides user-friendly network error messages
+ */
+async function safeFetch(url: string, options: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(getNetworkErrorMessage(error));
+  }
+}
+
 export class NoteShareAPI {
   // Track in-flight share requests to prevent duplicates
   private inFlightShares = new Map<string, Promise<ShareResponse>>();
@@ -54,7 +108,7 @@ export class NoteShareAPI {
   }
 
   private async doShareNote(request: ShareRequest): Promise<ShareResponse> {
-    const response = await fetch(`${this.settings.serverUrl}/api/share`, {
+    const response = await safeFetch(`${this.settings.serverUrl}/api/share`, {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(request),
@@ -68,7 +122,7 @@ export class NoteShareAPI {
   }
 
   async listNotes(vault: string): Promise<SharedNote[]> {
-    const response = await fetch(`${this.settings.serverUrl}/api/notes?vault=${encodeURIComponent(vault)}`, {
+    const response = await safeFetch(`${this.settings.serverUrl}/api/notes?vault=${encodeURIComponent(vault)}`, {
       method: 'GET',
       headers: this.headers,
     });
@@ -81,7 +135,7 @@ export class NoteShareAPI {
   }
 
   async deleteNote(vault: string, titleSlug: string, hash: string): Promise<void> {
-    const response = await fetch(
+    const response = await safeFetch(
       `${this.settings.serverUrl}/api/notes/${encodeURIComponent(vault)}/${encodeURIComponent(titleSlug)}/${encodeURIComponent(hash)}`,
       {
         method: 'DELETE',
@@ -95,7 +149,7 @@ export class NoteShareAPI {
   }
 
   async syncTheme(request: ThemeSyncRequest): Promise<void> {
-    const response = await fetch(`${this.settings.serverUrl}/api/theme`, {
+    const response = await safeFetch(`${this.settings.serverUrl}/api/theme`, {
       method: 'PUT',
       headers: this.headers,
       body: JSON.stringify(request),
@@ -111,7 +165,7 @@ export class NoteShareAPI {
   }
 
   async uploadImage(noteHash: string, filename: string, data: ArrayBuffer, contentType: string): Promise<ImageUploadResponse> {
-    const response = await fetch(`${this.settings.serverUrl}/api/images/${noteHash}`, {
+    const response = await safeFetch(`${this.settings.serverUrl}/api/images/${noteHash}`, {
       method: 'POST',
       headers: {
         'X-API-Key': this.settings.apiKey,
@@ -137,7 +191,7 @@ export class NoteShareAPI {
     }
 
     try {
-      const response = await fetch(`${this.settings.serverUrl}/api/status`, {
+      const response = await safeFetch(`${this.settings.serverUrl}/api/status`, {
         method: 'GET',
         headers: this.headers,
       });
@@ -161,10 +215,7 @@ export class NoteShareAPI {
 
       return { success: false, message: data.error || 'Unknown error' };
     } catch (e) {
-      if (e instanceof TypeError && e.message.includes('fetch')) {
-        return { success: false, message: 'Server not reachable - check URL' };
-      }
-      return { success: false, message: `Connection failed: ${e instanceof Error ? e.message : 'Unknown error'}` };
+      return { success: false, message: e instanceof Error ? e.message : 'Unknown error' };
     }
   }
 }
