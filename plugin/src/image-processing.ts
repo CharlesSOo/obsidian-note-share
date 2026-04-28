@@ -173,15 +173,88 @@ export async function uploadImageFile(
 }
 
 /**
- * Upload a video file as-is (no conversion). Returns an HTML <video> tag string,
- * since markdown image syntax doesn't render videos.
+ * Capture a thumbnail (first non-blank frame) from a video as WebP.
+ * Returns undefined if anything fails — caller should treat this as best-effort.
+ */
+async function generateVideoThumbnail(data: ArrayBuffer, contentType: string): Promise<ArrayBuffer | undefined> {
+  return new Promise((resolve) => {
+    const blob = new Blob([data], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+
+    let settled = false;
+    const finish = (result: ArrayBuffer | undefined) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish(undefined), 10000);
+
+    video.onloadedmetadata = () => {
+      // Seek 0.5s in (or 10% if shorter) to skip black opening frames
+      const t = Math.min(0.5, (video.duration || 1) * 0.1);
+      video.currentTime = isFinite(t) ? t : 0;
+    };
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        if (!canvas.width || !canvas.height) {
+          clearTimeout(timer);
+          return finish(undefined);
+        }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          clearTimeout(timer);
+          return finish(undefined);
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (b) => {
+            clearTimeout(timer);
+            if (!b) return finish(undefined);
+            b.arrayBuffer().then(finish).catch(() => finish(undefined));
+          },
+          'image/webp',
+          WEBP_QUALITY
+        );
+      } catch {
+        clearTimeout(timer);
+        finish(undefined);
+      }
+    };
+
+    video.onerror = () => {
+      clearTimeout(timer);
+      finish(undefined);
+    };
+
+    video.src = url;
+  });
+}
+
+export interface VideoUploadResult {
+  url: string;
+  poster?: string;
+}
+
+/**
+ * Upload a video file as-is (no conversion) plus a thumbnail.
  */
 export async function uploadVideoFile(
   app: App,
   api: NoteShareAPI,
   videoFile: TFile,
   noteHash: string
-): Promise<string | undefined> {
+): Promise<VideoUploadResult | undefined> {
   try {
     const stat = await app.vault.adapter.stat(videoFile.path);
     if (stat && stat.size > MAX_UPLOAD_BYTES) {
@@ -194,10 +267,18 @@ export async function uploadVideoFile(
     }
 
     const ext = videoFile.extension.toLowerCase();
+    const contentType = videoContentType(ext);
     const data = await app.vault.readBinary(videoFile);
-    const result = await api.uploadImage(noteHash, videoFile.name, data, videoContentType(ext));
-    console.log(`[NoteShare] Video uploaded: ${result.url}`);
-    return result.url;
+
+    const videoUpload = api.uploadImage(noteHash, videoFile.name, data, contentType);
+    const thumb = await generateVideoThumbnail(data, contentType);
+    const thumbUpload = thumb
+      ? api.uploadImage(noteHash, `${videoFile.basename}.thumb.webp`, thumb, 'image/webp')
+      : Promise.resolve(undefined);
+
+    const [videoResult, thumbResult] = await Promise.all([videoUpload, thumbUpload]);
+    console.log(`[NoteShare] Video uploaded: ${videoResult.url}${thumbResult ? ' (with poster)' : ''}`);
+    return { url: videoResult.url, poster: thumbResult?.url };
   } catch (e) {
     console.error(`[NoteShare] Failed to upload video ${videoFile.path}:`, e);
     return undefined;
@@ -238,8 +319,10 @@ export async function processImages(
     sem.run(async () => {
       const ext = mediaFile.extension.toLowerCase();
       if (VIDEO_EXTENSIONS.includes(ext)) {
-        const url = await uploadVideoFile(app, api, mediaFile, noteHash);
-        return url ? { original, replacement: `<video src="${url}" controls playsinline preload="metadata" style="max-width:100%"></video>` } : undefined;
+        const result = await uploadVideoFile(app, api, mediaFile, noteHash);
+        if (!result) return undefined;
+        const posterAttr = result.poster ? ` poster="${result.poster}"` : '';
+        return { original, replacement: `<video src="${result.url}"${posterAttr} controls playsinline preload="metadata" style="max-width:100%"></video>` };
       }
       const url = await uploadImageFile(app, api, mediaFile, noteHash);
       return url ? { original, replacement: `![${alt}](${url})` } : undefined;
