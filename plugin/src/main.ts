@@ -80,15 +80,6 @@ export default class NoteSharePlugin extends Plugin {
     // Add settings tab
     this.addSettingTab(new NoteShareSettingTab(this.app, this));
 
-    // Watch for file modifications (auto-sync)
-    this.registerEvent(
-      this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && file.extension === 'md') {
-          this.handleFileModify(file);
-        }
-      })
-    );
-
     // Handle file renames
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
@@ -112,41 +103,6 @@ export default class NoteSharePlugin extends Plugin {
         }
       })
     );
-  }
-
-  handleFileModify(file: TFile) {
-    if (!this.settings.autoSync) return;
-    if (!this.settings.sharedNotes?.[file.path]) return;
-
-    this.autoSyncNote(file);
-  }
-
-  async autoSyncNote(file: TFile) {
-    console.log(`[NoteShare] Auto-syncing: ${file.path}`);
-    try {
-      const content = await this.app.vault.read(file);
-      const vault = this.getEffectiveVaultSlug();
-
-      // Create semaphore for parallel image uploads
-      const semaphore = new Semaphore();
-
-      // Process images and get rewritten content
-      const processedContent = await processImages(this.app, this.api, file, content, vault, semaphore);
-
-      await this.api.shareNote({
-        vault,
-        title: file.basename,
-        content: processedContent,
-      });
-
-      // Update lastSynced
-      if (this.settings.sharedNotes?.[file.path]) {
-        this.settings.sharedNotes[file.path].lastSynced = new Date().toISOString();
-        await this.saveSettings();
-      }
-    } catch (e) {
-      console.error('[NoteShare] Auto-sync failed:', e);
-    }
   }
 
   async activateSidebarView() {

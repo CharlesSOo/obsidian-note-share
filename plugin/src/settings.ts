@@ -108,18 +108,6 @@ export class NoteShareSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Auto-sync edits')
-      .setDesc('Re-upload shared notes when you edit them')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoSync ?? true)
-          .onChange(async (value) => {
-            this.plugin.settings.autoSync = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
       .setName('Auto-delete after (days)')
       .setDesc('Delete shared notes after N days (0 = never)')
       .addText((text) =>
