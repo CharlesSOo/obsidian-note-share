@@ -30,8 +30,12 @@ const app = new Hono<{ Bindings: Env }>();
 // Enable CORS for plugin requests
 app.use('/api/*', cors());
 
-// API Key authentication middleware
+// API Key authentication middleware (skip public tracking endpoint)
 app.use('/api/*', async (c, next) => {
+  if (c.req.path.startsWith('/api/track/')) {
+    await next();
+    return;
+  }
   const apiKey = c.req.header('X-API-Key');
   if (!apiKey || apiKey !== c.env.API_KEY) {
     return c.json({ error: 'Unauthorized' }, 401);
@@ -223,8 +227,11 @@ app.delete('/api/notes/:vault/:titleSlug/:hash', async (c) => {
     const titleSlug = c.req.param('titleSlug');
     const hash = c.req.param('hash');
 
-    // Delete the note (stored globally)
-    await c.env.NOTES.delete(`notes/${titleSlug}-${hash}.json`);
+    // Delete the note (stored globally) and its stats
+    await Promise.all([
+      c.env.NOTES.delete(`notes/${titleSlug}-${hash}.json`),
+      c.env.NOTES.delete(`stats/${hash}.json`),
+    ]);
 
     // Update index
     await removeFromIndex(c.env.NOTES, vault, titleSlug, hash);
@@ -259,6 +266,76 @@ app.post('/api/images/:noteHash', async (c) => {
     return c.json({ error: 'Failed to upload image' }, 500);
   }
 });
+
+// Track a note view (public - no auth required)
+app.post('/api/track/:hash', async (c) => {
+  try {
+    const hash = c.req.param('hash');
+    const ua = c.req.header('User-Agent') || '';
+
+    // Skip obvious bots
+    if (/bot|crawler|spider|preview|facebookexternalhit|slackbot|discordbot|twitterbot|whatsapp|linkedinbot/i.test(ua)) {
+      return c.json({ ok: true, skipped: true });
+    }
+
+    const view = {
+      timestamp: new Date().toISOString(),
+      device: parseDevice(ua),
+      browser: parseBrowser(ua),
+      country: c.req.header('CF-IPCountry') || 'unknown',
+    };
+
+    const key = `stats/${hash}.json`;
+    let stats: { views: typeof view[]; total: number } = { views: [], total: 0 };
+    const existing = await c.env.NOTES.get(key);
+    if (existing) {
+      stats = await existing.json();
+    }
+
+    stats.total = (stats.total || 0) + 1;
+    stats.views.unshift(view);
+    if (stats.views.length > 100) stats.views.length = 100;
+
+    await c.env.NOTES.put(key, JSON.stringify(stats));
+    return c.json({ ok: true });
+  } catch (e) {
+    console.error('Track error:', e);
+    return c.json({ ok: false }, 500);
+  }
+});
+
+// Get stats for a note
+app.get('/api/stats/:hash', async (c) => {
+  try {
+    const hash = c.req.param('hash');
+    const obj = await c.env.NOTES.get(`stats/${hash}.json`);
+    if (!obj) return c.json({ views: [], total: 0 });
+    return c.json(await obj.json());
+  } catch (e) {
+    console.error('Stats error:', e);
+    return c.json({ error: 'Failed to fetch stats' }, 500);
+  }
+});
+
+function parseDevice(ua: string): string {
+  if (/iPad/i.test(ua)) return 'iPad';
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Android phone' : 'Android tablet';
+  if (/Mobile/i.test(ua)) return 'Mobile';
+  if (/Macintosh/i.test(ua)) return 'Mac';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return 'Unknown';
+}
+
+function parseBrowser(ua: string): string {
+  if (/Edg\//i.test(ua)) return 'Edge';
+  if (/OPR\/|Opera/i.test(ua)) return 'Opera';
+  if (/Firefox/i.test(ua)) return 'Firefox';
+  if (/Chrome/i.test(ua)) return 'Chrome';
+  if (/Safari/i.test(ua)) return 'Safari';
+  return 'Other';
+}
 
 // Serve an image (public - no auth required)
 app.get('/i/:noteHash/:filename', async (c) => {
@@ -432,6 +509,7 @@ async function cleanupExpiredNotes(env: Env): Promise<number> {
         const imagesList = await env.NOTES.list({ prefix: `images/${note.hash}/` });
         await Promise.all([
           env.NOTES.delete(object.key),
+          env.NOTES.delete(`stats/${note.hash}.json`),
           ...imagesList.objects.map(img => env.NOTES.delete(img.key)),
           removeFromIndex(env.NOTES, note.vault, note.titleSlug, note.hash),
         ]);

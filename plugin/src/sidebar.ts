@@ -87,6 +87,11 @@ export class SharedNotesView extends ItemView {
 
     const vault = this.plugin.getEffectiveVaultSlug();
 
+    if (btn.classList.contains('stats-btn')) {
+      await this.toggleStats(item, hash);
+      return;
+    }
+
     if (btn.classList.contains('copy-btn')) {
       const url = this.plugin.api.buildNoteUrl(vault, titleSlug, hash);
       await navigator.clipboard.writeText(url);
@@ -170,6 +175,39 @@ export class SharedNotesView extends ItemView {
     }
   }
 
+  private async toggleStats(item: HTMLElement, hash: string): Promise<void> {
+    const existing = item.querySelector('.shared-notes-stats') as HTMLElement | null;
+    if (existing) {
+      existing.remove();
+      return;
+    }
+
+    const panel = item.createEl('div', { cls: 'shared-notes-stats' });
+    panel.setText('Loading…');
+
+    try {
+      const stats = await this.plugin.api.getStats(hash);
+      panel.empty();
+
+      const summary = panel.createEl('div', { cls: 'shared-notes-stats-summary' });
+      summary.setText(`${stats.total} view${stats.total === 1 ? '' : 's'}`);
+
+      if (stats.views.length === 0) {
+        panel.createEl('div', { cls: 'shared-notes-stats-empty', text: 'No views yet' });
+        return;
+      }
+
+      const list = panel.createEl('ul', { cls: 'shared-notes-stats-list' });
+      for (const v of stats.views.slice(0, 20)) {
+        const li = list.createEl('li');
+        const when = new Date(v.timestamp).toLocaleString();
+        li.setText(`${when} · ${v.device} · ${v.browser}${v.country && v.country !== 'unknown' ? ' · ' + v.country : ''}`);
+      }
+    } catch (e) {
+      panel.setText('Failed to load stats');
+    }
+  }
+
   private createNoteItem(note: SharedNote): void {
     if (!this.list) return;
 
@@ -186,6 +224,11 @@ export class SharedNotesView extends ItemView {
     });
 
     const actions = item.createEl('div', { cls: 'shared-notes-actions' });
+
+    // Stats button
+    const statsBtn = actions.createEl('button', { cls: 'shared-notes-btn stats-btn' });
+    setIcon(statsBtn, 'bar-chart-2');
+    statsBtn.setAttribute('aria-label', 'View stats');
 
     // Copy link button
     const copyBtn = actions.createEl('button', { cls: 'shared-notes-btn copy-btn' });

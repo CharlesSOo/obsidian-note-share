@@ -118,6 +118,11 @@ export function renderNote(note: StoredNote, theme: DualThemeSettings | undefine
         };
       }
     });
+
+    // View tracking beacon (fires once per page load)
+    try {
+      fetch(${JSON.stringify(`/api/track/${note.hash}`)}, { method: 'POST', keepalive: true });
+    } catch (e) {}
   </script>
 </body>
 </html>`;

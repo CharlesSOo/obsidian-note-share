@@ -129,6 +129,43 @@
   color: var(--text-error);
 }
 
+.shared-notes-stats {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.shared-notes-stats-summary {
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 6px;
+}
+
+.shared-notes-stats-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.shared-notes-stats-list li {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.shared-notes-stats-list li:last-child {
+  border-bottom: none;
+}
+
+.shared-notes-stats-empty {
+  font-style: italic;
+}
+
 .shared-notes-search {
   display: block;
   width: calc(100% - 20px);

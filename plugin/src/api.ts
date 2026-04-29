@@ -160,6 +160,19 @@ export class NoteShareAPI {
     }
   }
 
+  async getStats(hash: string): Promise<{ views: { timestamp: string; device: string; browser: string; country: string }[]; total: number }> {
+    const response = await safeFetch(`${this.settings.serverUrl}/api/stats/${encodeURIComponent(hash)}`, {
+      method: 'GET',
+      headers: this.headers,
+    });
+
+    if (!response.ok) {
+      await handleResponseError(response, 'Failed to fetch stats');
+    }
+
+    return response.json();
+  }
+
   buildNoteUrl(vault: string, titleSlug: string, hash: string): string {
     return `${this.settings.serverUrl}/g/${vault}/${titleSlug}/${hash}`;
   }
